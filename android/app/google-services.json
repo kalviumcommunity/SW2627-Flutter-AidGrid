@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "774716522366",
+    "project_id": "aidgrid-717fe",
+    "storage_bucket": "aidgrid-717fe.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:774716522366:android:34db52791927f132127d2f",
+        "android_client_info": {
+          "package_name": "com.example.food_distribution_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAA-NXvUJoT8eaToI3VW3H_ksF4oJiVuQs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
