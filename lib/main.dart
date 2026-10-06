@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firebase_options.dart';
 
@@ -12,6 +13,25 @@ void main() async {
   runApp(const AidGridApp());
 }
 
+Future<String?> getUserRole() async {
+  final user = FirebaseAuth.instance.currentUser;
+
+  if (user == null) {
+    return null;
+  }
+
+  final userDoc = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .get();
+
+  if (!userDoc.exists) {
+    return null;
+  }
+
+  return userDoc.data()?['role'] as String?;
+}
+
 class AidGridApp extends StatelessWidget {
   const AidGridApp({super.key});
 
@@ -21,10 +41,34 @@ class AidGridApp extends StatelessWidget {
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
-          if (snapshot.hasData) {
-            return const DashboardPage();
+          if (!snapshot.hasData) {
+            return const LoginPage();
           }
-          return const LoginPage();
+
+          return FutureBuilder(
+            future: getUserRole(),
+            builder: (context, roleSnapshot) {
+              if (roleSnapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                );
+              }
+
+              if (roleSnapshot.hasError) {
+                return const Scaffold(
+                  body: Center(child: Text('Unable to load user profile.')),
+                );
+              }
+
+              final role = roleSnapshot.data;
+
+              if (role == 'ADMIN') {
+                return const AdminDashboardPage();
+              }
+
+              return const DashboardPage();
+            },
+          );
         },
       ),
     );
@@ -54,32 +98,52 @@ class _RegisterPageState extends State<RegisterPage> {
 
   Future<void> register() async {
     errorMessage = null;
+
     setState(() {
       isLoading = true;
     });
+
     try {
       final credential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(
             email: emailController.text.trim(),
             password: passwordController.text.trim(),
           );
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(credential.user!.uid)
+          .set({
+            'name': nameController.text.trim(),
+            'email': emailController.text.trim(),
+            'role': 'VOLUNTEER',
+          });
+
       print("User created: ${credential.user?.uid}");
+
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
     } on FirebaseAuthException catch (e) {
-      setState(() {
-        if (e.code == 'email-already-in-use') {
-          errorMessage = 'This email is already registered.';
-        } else if (e.code == 'invalid-email') {
-          errorMessage = 'Please enter a valid email address.';
-        } else if (e.code == 'weak-password') {
-          errorMessage = 'Password is too weak.';
-        } else {
-          errorMessage = 'Registration failed. Please try again.';
-        }
-      });
+      if (mounted) {
+        setState(() {
+          if (e.code == 'email-already-in-use') {
+            errorMessage = 'This email is already registered.';
+          } else if (e.code == 'invalid-email') {
+            errorMessage = 'Please enter a valid email address.';
+          } else if (e.code == 'weak-password') {
+            errorMessage = 'Password is too weak.';
+          } else {
+            errorMessage = 'Registration failed. Please try again.';
+          }
+        });
+      }
     } finally {
-      setState(() {
-        isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
     }
   }
 
@@ -163,11 +227,6 @@ class _LoginPageState extends State<LoginPage> {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
-      );
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const DashboardPage()),
       );
     } on FirebaseAuthException catch (e) {
       setState(() {
@@ -300,6 +359,30 @@ class DashboardPage extends StatelessWidget {
             Text("Rice distributed - 20 kg"),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class AdminDashboardPage extends StatelessWidget {
+  const AdminDashboardPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("AidGrid Admin"),
+        actions: [
+          IconButton(
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+            },
+            icon: const Icon(Icons.logout),
+          ),
+        ],
+      ),
+      body: const Center(
+        child: Text("Welcome Admin", style: TextStyle(fontSize: 24)),
       ),
     );
   }
