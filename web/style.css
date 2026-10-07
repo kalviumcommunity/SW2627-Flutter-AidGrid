@@ -1,0 +1,123 @@
+/* 
+ * AidGrid - Minimal, Sober & Refreshing Web Stylesheet
+ * Handcrafted aesthetic: Warm neutral canvas, deep organic pine accents, crisp typography
+ */
+
+:root {
+  --bg-canvas: #f8f9f7;
+  --bg-card: #ffffff;
+  --text-primary: #19211c;
+  --text-secondary: #56645b;
+  --text-muted: #7d8b82;
+  --border-subtle: #e3e8e4;
+  --border-focus: #1f3d2e;
+  --accent-pine: #1f3d2e;
+  --accent-sage: #e8f0ec;
+  --accent-warm: #d97736;
+  --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Base reset & typography */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-stack);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow: hidden; /* Flutter handles scrolling inside canvas/view */
+}
+
+/* Flutter web container centering and clean boundaries */
+flutter-view {
+  background-color: var(--bg-canvas) !important;
+}
+
+/* Subtle, sober scrollbar for web viewports */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd3cc;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #aab5ac;
+}
+
+/* Minimalist loading screen before Flutter engine mounts */
+.app-loader {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg-canvas);
+  z-index: 9999;
+  transition: opacity 0.3s ease-out;
+}
+
+.app-loader.fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loader-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.loader-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background-color: var(--accent-pine);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.5px;
+}
+
+.loader-title {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  color: var(--text-primary);
+}
+
+.loader-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border-subtle);
+  border-top-color: var(--accent-pine);
+  border-radius: 50%;
+  animation: sober-spin 0.8s linear infinite;
+}
+
+@keyframes sober-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
