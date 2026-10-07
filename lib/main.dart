@@ -325,15 +325,25 @@ class DashboardPage extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Container(
-                    padding: EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey),
-                    ),
-                    child: Column(
-                      children: [const Text("Inventory"), Text("420kg")],
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const InventoryPage(),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey),
+                      ),
+                      child: const Column(
+                        children: [Text("Inventory"), Text("420kg")],
+                      ),
                     ),
                   ),
                 ),
@@ -359,6 +369,48 @@ class DashboardPage extends StatelessWidget {
             Text("Rice distributed - 20 kg"),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class InventoryPage extends StatelessWidget {
+  const InventoryPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Inventory")),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('Inventory').snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return const Center(child: Text("Unable to load inventory."));
+          }
+
+          final items = snapshot.data?.docs ?? [];
+
+          if (items.isEmpty) {
+            return const Center(child: Text("No inventory items found."));
+          }
+
+          return ListView.builder(
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index].data() as Map<String, dynamic>;
+
+              return ListTile(
+                title: Text(item['name']),
+                subtitle: Text('${item['quantity']} ${item['unit']}'),
+                trailing: Text(item['category']),
+              );
+            },
+          );
+        },
       ),
     );
   }
