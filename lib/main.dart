@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -619,7 +620,23 @@ class InventoryPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Inventory')),
+      appBar: AppBar(
+        title: const Text("Inventory"),
+        actions: [
+          IconButton(
+            tooltip: 'Add Inventory',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AddInventoryPage(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.add),
+          ),
+        ],
+      ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('Inventory').snapshots(),
         builder: (context, snapshot) {
@@ -683,9 +700,34 @@ class InventoryPage extends StatelessWidget {
                         ),
                       ),
 
-                      Text(
-                        item['category'] ?? '',
-                        style: AppTypography.labelSmall,
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            item['category'] ?? '',
+                            style: AppTypography.labelSmall,
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            tooltip: 'Edit inventory',
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => EditInventoryPage(
+                                    documentId: items[index].id,
+                                    name: item['name'] ?? '',
+                                    category: item['category'] ?? '',
+                                    quantity:
+                                        item['quantity']?.toString() ?? '',
+                                    unit: item['unit'] ?? '',
+                                  ),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.edit_outlined),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -694,6 +736,306 @@ class InventoryPage extends StatelessWidget {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class AddInventoryPage extends StatefulWidget {
+  const AddInventoryPage({super.key});
+
+  @override
+  State<AddInventoryPage> createState() => _AddInventoryPageState();
+}
+
+class _AddInventoryPageState extends State<AddInventoryPage> {
+  final nameController = TextEditingController();
+  final categoryController = TextEditingController();
+  final quantityController = TextEditingController();
+  final unitController = TextEditingController();
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    categoryController.dispose();
+    quantityController.dispose();
+    unitController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Add Inventory')),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Item name',
+                  hintText: 'e.g. Rice',
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              TextField(
+                controller: categoryController,
+                decoration: const InputDecoration(
+                  labelText: 'Category',
+                  hintText: 'e.g. Grains',
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              TextField(
+                controller: quantityController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Quantity',
+                  hintText: 'e.g. 100',
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              TextField(
+                controller: unitController,
+                decoration: const InputDecoration(
+                  labelText: 'Unit',
+                  hintText: 'e.g. kg',
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              ElevatedButton(
+                onPressed: () async {
+                  final name = nameController.text.trim();
+                  final category = categoryController.text.trim();
+                  final quantityText = quantityController.text.trim();
+                  final unit = unitController.text.trim();
+
+                  if (name.isEmpty ||
+                      category.isEmpty ||
+                      quantityText.isEmpty ||
+                      unit.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please fill in all fields'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  final quantity = int.tryParse(quantityText);
+
+                  if (quantity == null || quantity < 0) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please enter a valid quantity'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  try {
+                    await FirebaseFirestore.instance
+                        .collection('Inventory')
+                        .add({
+                          'name': name,
+                          'category': category,
+                          'quantity': quantity,
+                          'unit': unit,
+                        });
+
+                    if (!mounted) return;
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Inventory item added successfully'),
+                      ),
+                    );
+
+                    Navigator.pop(context);
+                  } catch (e) {
+                    debugPrint('ERROR ADDING INVENTORY: $e');
+
+                    if (!mounted) return;
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Failed to add inventory item'),
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Add Item'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class EditInventoryPage extends StatefulWidget {
+  final String documentId;
+  final String name;
+  final String category;
+  final String quantity;
+  final String unit;
+
+  const EditInventoryPage({
+    super.key,
+    required this.documentId,
+    required this.name,
+    required this.category,
+    required this.quantity,
+    required this.unit,
+  });
+
+  @override
+  State<EditInventoryPage> createState() => _EditInventoryPageState();
+}
+
+class _EditInventoryPageState extends State<EditInventoryPage> {
+  late final TextEditingController nameController;
+  late final TextEditingController categoryController;
+  late final TextEditingController quantityController;
+  late final TextEditingController unitController;
+
+  @override
+  void initState() {
+    super.initState();
+
+    nameController = TextEditingController(text: widget.name);
+    categoryController = TextEditingController(text: widget.category);
+    quantityController = TextEditingController(text: widget.quantity);
+    unitController = TextEditingController(text: widget.unit);
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    categoryController.dispose();
+    quantityController.dispose();
+    unitController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Edit Inventory')),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(labelText: 'Item name'),
+              ),
+
+              const SizedBox(height: 16),
+
+              TextField(
+                controller: categoryController,
+                decoration: const InputDecoration(labelText: 'Category'),
+              ),
+
+              const SizedBox(height: 16),
+
+              TextField(
+                controller: quantityController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Quantity'),
+              ),
+
+              const SizedBox(height: 16),
+
+              TextField(
+                controller: unitController,
+                decoration: const InputDecoration(labelText: 'Unit'),
+              ),
+
+              const SizedBox(height: 24),
+
+              ElevatedButton(
+                onPressed: () async {
+                  final name = nameController.text.trim();
+                  final category = categoryController.text.trim();
+                  final quantityText = quantityController.text.trim();
+                  final unit = unitController.text.trim();
+
+                  if (name.isEmpty ||
+                      category.isEmpty ||
+                      quantityText.isEmpty ||
+                      unit.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please fill in all fields'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  final quantity = int.tryParse(quantityText);
+
+                  if (quantity == null || quantity < 0) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please enter a valid quantity'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  try {
+                    await FirebaseFirestore.instance
+                        .collection('Inventory')
+                        .doc(widget.documentId)
+                        .update({
+                          'name': name,
+                          'category': category,
+                          'quantity': quantity,
+                          'unit': unit,
+                        });
+
+                    if (!mounted) return;
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Inventory updated successfully'),
+                      ),
+                    );
+
+                    Navigator.pop(context);
+                  } catch (e) {
+                    debugPrint('ERROR UPDATING INVENTORY: $e');
+
+                    if (!mounted) return;
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Failed to update inventory'),
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Save Changes'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
