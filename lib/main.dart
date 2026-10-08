@@ -1,10 +1,10 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firebase_options.dart';
+import 'screens/sites/sites_page.dart';
 import 'theme/app_theme.dart';
 import 'theme/components.dart';
 
@@ -605,6 +605,45 @@ class AdminDashboardPage extends StatelessWidget {
                     ],
                   ),
                 ),
+
+                const SizedBox(height: 16),
+
+                SoberCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.location_city_outlined, size: 28),
+
+                      const SizedBox(height: 12),
+
+                      Text(
+                        'Sites & Communities',
+                        style: AppTypography.titleMedium,
+                      ),
+
+                      const SizedBox(height: 6),
+
+                      Text(
+                        'View and manage distribution centers and community hubs.',
+                        style: AppTypography.bodyMedium,
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const SitesPage(),
+                            ),
+                          );
+                        },
+                        child: const Text('Open Sites'),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -854,7 +893,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
                           'unit': unit,
                         });
 
-                    if (!mounted) return;
+                    if (!context.mounted) return;
 
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -866,7 +905,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
                   } catch (e) {
                     debugPrint('ERROR ADDING INVENTORY: $e');
 
-                    if (!mounted) return;
+                    if (!context.mounted) return;
 
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -1010,7 +1049,7 @@ class _EditInventoryPageState extends State<EditInventoryPage> {
                           'unit': unit,
                         });
 
-                    if (!mounted) return;
+                    if (!context.mounted) return;
 
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -1022,7 +1061,7 @@ class _EditInventoryPageState extends State<EditInventoryPage> {
                   } catch (e) {
                     debugPrint('ERROR UPDATING INVENTORY: $e');
 
-                    if (!mounted) return;
+                    if (!context.mounted) return;
 
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -1222,6 +1261,24 @@ class DashboardPage extends StatelessWidget {
                     },
                     icon: const Icon(Icons.inventory_2_outlined),
                     label: const Text('View Inventory'),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SitesPage(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.location_city_outlined),
+                    label: const Text('View Sites & Communities'),
                   ),
                 ),
 
