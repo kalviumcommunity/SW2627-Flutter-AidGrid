@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firebase_options.dart';
 import 'theme/app_theme.dart';
@@ -12,6 +13,36 @@ void main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(const AidGridApp());
+}
+
+Future<String?> getUserRole() async {
+  final user = FirebaseAuth.instance.currentUser;
+
+  if (user == null) {
+    debugPrint('ROLE CHECK: No authenticated user');
+    return null;
+  }
+
+  debugPrint('ROLE CHECK: Auth UID = ${user.uid}');
+  debugPrint('ROLE CHECK: Auth email = ${user.email}');
+
+  final userDoc = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .get();
+
+  debugPrint('ROLE CHECK: Document exists = ${userDoc.exists}');
+  debugPrint('ROLE CHECK: Document data = ${userDoc.data()}');
+
+  if (!userDoc.exists) {
+    return null;
+  }
+
+  final role = userDoc.data()?['role'] as String?;
+
+  debugPrint('ROLE CHECK: Role = $role');
+
+  return role;
 }
 
 class AidGridApp extends StatelessWidget {
@@ -41,7 +72,39 @@ class AidGridApp extends StatelessWidget {
             );
           }
           if (snapshot.hasData) {
-            return const DashboardPage();
+            return FutureBuilder<String?>(
+              future: getUserRole(),
+              builder: (context, roleSnapshot) {
+                if (roleSnapshot.connectionState == ConnectionState.waiting) {
+                  return const Scaffold(
+                    body: Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  );
+                }
+
+                if (roleSnapshot.hasError) {
+                  return const Scaffold(
+                    body: Center(child: Text('Unable to load user profile.')),
+                  );
+                }
+
+                final role = roleSnapshot.data?.trim();
+
+                debugPrint('ROUTING: roleSnapshot data = [$role]');
+                debugPrint('ROUTING: role length = ${role?.length}');
+
+                if (role == 'ADMIN') {
+                  debugPrint('ROUTING: RETURNING ADMIN DASHBOARD');
+                  return const AdminDashboardPage();
+                }
+
+                debugPrint('ROUTING: RETURNING VOLUNTEER DASHBOARD');
+                return const DashboardPage();
+              },
+            );
           }
           return const LoginPage();
         },
@@ -87,16 +150,18 @@ class _LoginPageState extends State<LoginPage> {
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
-      // Auth state change will handle navigation via StreamBuilder.
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       setState(() {
-        if (e.code == 'invalid-credential' || e.code == 'user-not-found' || e.code == 'wrong-password') {
+        if (e.code == 'invalid-credential' ||
+            e.code == 'user-not-found' ||
+            e.code == 'wrong-password') {
           errorMessage = 'Email or password is incorrect.';
         } else if (e.code == 'invalid-email') {
           errorMessage = 'Please enter a valid email address.';
         } else {
-          errorMessage = 'Login failed. Please check your connection and try again.';
+          errorMessage =
+              'Login failed. Please check your connection and try again.';
         }
       });
     } catch (_) {
@@ -149,7 +214,10 @@ class _LoginPageState extends State<LoginPage> {
                           decoration: const InputDecoration(
                             labelText: 'Email address',
                             hintText: 'name@organization.org',
-                            prefixIcon: Icon(Icons.mail_outline_rounded, size: 20),
+                            prefixIcon: Icon(
+                              Icons.mail_outline_rounded,
+                              size: 20,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -161,7 +229,10 @@ class _LoginPageState extends State<LoginPage> {
                           onSubmitted: (_) => login(),
                           decoration: InputDecoration(
                             labelText: 'Password',
-                            prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
+                            prefixIcon: const Icon(
+                              Icons.lock_outline_rounded,
+                              size: 20,
+                            ),
                             suffixIcon: IconButton(
                               icon: Icon(
                                 obscurePassword
@@ -271,10 +342,20 @@ class _RegisterPageState extends State<RegisterPage> {
     });
 
     try {
-      final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: emailController.text.trim(),
-        password: passwordController.text.trim(),
-      );
+      final credential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
+            email: emailController.text.trim(),
+            password: passwordController.text.trim(),
+          );
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(credential.user!.uid)
+          .set({
+            'name': nameController.text.trim(),
+            'email': emailController.text.trim(),
+            'role': 'VOLUNTEER',
+          });
 
       if (nameController.text.trim().isNotEmpty) {
         await credential.user?.updateDisplayName(nameController.text.trim());
@@ -294,7 +375,8 @@ class _RegisterPageState extends State<RegisterPage> {
         } else if (e.code == 'weak-password') {
           errorMessage = 'Password must be at least 6 characters.';
         } else {
-          errorMessage = 'Registration could not be completed. Please try again.';
+          errorMessage =
+              'Registration could not be completed. Please try again.';
         }
       });
     } catch (_) {
@@ -314,9 +396,7 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Register'),
-      ),
+      appBar: AppBar(title: const Text('Register')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -328,7 +408,8 @@ class _RegisterPageState extends State<RegisterPage> {
                 children: [
                   const BrandHeader(
                     title: 'New Volunteer',
-                    subtitle: 'Register your account to coordinate distribution',
+                    subtitle:
+                        'Register your account to coordinate distribution',
                   ),
                   const SizedBox(height: 24),
 
@@ -349,7 +430,10 @@ class _RegisterPageState extends State<RegisterPage> {
                           decoration: const InputDecoration(
                             labelText: 'Full name',
                             hintText: 'Jane Doe',
-                            prefixIcon: Icon(Icons.person_outline_rounded, size: 20),
+                            prefixIcon: Icon(
+                              Icons.person_outline_rounded,
+                              size: 20,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -361,7 +445,10 @@ class _RegisterPageState extends State<RegisterPage> {
                           decoration: const InputDecoration(
                             labelText: 'Email address',
                             hintText: 'name@organization.org',
-                            prefixIcon: Icon(Icons.mail_outline_rounded, size: 20),
+                            prefixIcon: Icon(
+                              Icons.mail_outline_rounded,
+                              size: 20,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -373,7 +460,10 @@ class _RegisterPageState extends State<RegisterPage> {
                           onSubmitted: (_) => register(),
                           decoration: InputDecoration(
                             labelText: 'Create password',
-                            prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
+                            prefixIcon: const Icon(
+                              Icons.lock_outline_rounded,
+                              size: 20,
+                            ),
                             suffixIcon: IconButton(
                               icon: Icon(
                                 obscurePassword
@@ -441,6 +531,174 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 }
 
+class AdminDashboardPage extends StatelessWidget {
+  const AdminDashboardPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    debugPrint('ADMIN DASHBOARD: BUILDING');
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AidGrid Admin'),
+        actions: [
+          IconButton(
+            tooltip: 'Sign Out',
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+            },
+            icon: const Icon(Icons.logout_rounded),
+          ),
+          const SizedBox(width: 12),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: ConstrainedContent(
+            maxWidth: 760,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('ADMIN DASHBOARD', style: AppTypography.labelSmall),
+
+                const SizedBox(height: 8),
+
+                Text('Welcome back, Admin', style: AppTypography.titleLarge),
+
+                const SizedBox(height: 24),
+
+                SoberCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.inventory_2_outlined, size: 28),
+
+                      const SizedBox(height: 12),
+
+                      Text(
+                        'Inventory Management',
+                        style: AppTypography.titleMedium,
+                      ),
+
+                      const SizedBox(height: 6),
+
+                      Text(
+                        'View and manage food supplies across AidGrid.',
+                        style: AppTypography.bodyMedium,
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const InventoryPage(),
+                            ),
+                          );
+                        },
+                        child: const Text('Open Inventory'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class InventoryPage extends StatelessWidget {
+  const InventoryPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Inventory')),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('Inventory').snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return const Center(child: Text('Unable to load inventory.'));
+          }
+
+          final items = snapshot.data?.docs ?? [];
+
+          if (items.isEmpty) {
+            return const Center(child: Text('No inventory items found.'));
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(20),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index].data() as Map<String, dynamic>;
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: SoberCard(
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryContainer,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.inventory_2_outlined,
+                          color: AppColors.primary,
+                        ),
+                      ),
+
+                      const SizedBox(width: 14),
+
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item['name'] ?? 'Unnamed item',
+                              style: AppTypography.titleMedium,
+                            ),
+
+                            const SizedBox(height: 4),
+
+                            Text(
+                              '${item['quantity']} ${item['unit']}',
+                              style: AppTypography.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      Text(
+                        item['category'] ?? '',
+                        style: AppTypography.labelSmall,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
 // ---------------------------------------------------------
 // Dashboard Page
 // ---------------------------------------------------------
@@ -451,7 +709,9 @@ class DashboardPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    final userName = user?.displayName ?? (user?.email != null ? user!.email!.split('@')[0] : 'Volunteer');
+    final userName =
+        user?.displayName ??
+        (user?.email != null ? user!.email!.split('@')[0] : 'Volunteer');
 
     return Scaffold(
       appBar: AppBar(
@@ -514,7 +774,10 @@ class DashboardPage extends StatelessWidget {
               children: [
                 // Top Welcome & Status Banner
                 SoberCard(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 18,
+                  ),
                   child: Row(
                     children: [
                       Expanded(
@@ -552,10 +815,7 @@ class DashboardPage extends StatelessWidget {
                 const SizedBox(height: 24),
 
                 // Metrics / Overview Cards
-                Text(
-                  'CURRENT STATUS',
-                  style: AppTypography.labelSmall,
-                ),
+                Text('CURRENT STATUS', style: AppTypography.labelSmall),
                 const SizedBox(height: 12),
 
                 LayoutBuilder(
@@ -605,16 +865,31 @@ class DashboardPage extends StatelessWidget {
                   },
                 ),
 
+                const SizedBox(height: 20),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const InventoryPage(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.inventory_2_outlined),
+                    label: const Text('View Inventory'),
+                  ),
+                ),
+
                 const SizedBox(height: 28),
 
                 // Recent Activity Feed
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'RECENT DISPATCHES',
-                      style: AppTypography.labelSmall,
-                    ),
+                    Text('RECENT DISPATCHES', style: AppTypography.labelSmall),
                     const SoberBadge(
                       label: 'Live sync',
                       backgroundColor: AppColors.secondaryContainer,
@@ -692,11 +967,7 @@ class _ActivityTile extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: AppColors.divider),
             ),
-            child: Icon(
-              icon,
-              size: 18,
-              color: AppColors.secondary,
-            ),
+            child: Icon(icon, size: 18, color: AppColors.secondary),
           ),
           const SizedBox(width: 14),
           Expanded(
