@@ -766,6 +766,65 @@ class InventoryPage extends StatelessWidget {
                             },
                             icon: const Icon(Icons.edit_outlined),
                           ),
+                          IconButton(
+                            tooltip: 'Delete inventory',
+                            onPressed: () async {
+                              final shouldDelete = await showDialog<bool>(
+                                context: context,
+                                builder: (dialogContext) {
+                                  return AlertDialog(
+                                    title: const Text("Delete inventory Item?"),
+                                    content: const Text(
+                                      'Are you sure you want to delete this item? '
+                                      'This action cannot be undone.',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () {
+                                          Navigator.pop(dialogContext, false);
+                                        },
+                                        child: const Text("Cancel"),
+                                      ),
+                                      TextButton(
+                                        onPressed: () {
+                                          Navigator.pop(dialogContext, true);
+                                        },
+                                        child: const Text("Delete"),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              );
+                              if (shouldDelete != true) return;
+
+                              try {
+                                await FirebaseFirestore.instance
+                                    .collection('Inventory')
+                                    .doc(items[index].id)
+                                    .delete();
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      "Inventory item deleted successfully",
+                                    ),
+                                  ),
+                                );
+                              } catch (e) {
+                                debugPrint('Error deleting Inventory $e');
+                                if (!context.mounted) return;
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Failed to delete inventory item',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.delete_outline),
+                          ),
                         ],
                       ),
                     ],
