@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+
 import '../../models/site.dart';
 import '../../services/sites_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/components.dart';
 import 'site_details_page.dart';
 import 'edit_site_page.dart';
+import 'add_site_page.dart';
 
 /// SitesPage displays the directory of all community and distribution sites.
 ///
@@ -32,7 +34,9 @@ class _SitesPageState extends State<SitesPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Added sample sites (Jaipur North, Jaipur South, Ajmer Central)'),
+          content: Text(
+            'Added sample sites (Jaipur North, Jaipur South, Ajmer Central)',
+          ),
           backgroundColor: AppColors.primary,
         ),
       );
@@ -60,18 +64,14 @@ class _SitesPageState extends State<SitesPage> {
         title: const Text('Sites & Communities'),
         actions: [
           IconButton(
-            tooltip: 'Add Sample Sites',
-            icon: _isSeeding
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.primary,
-                    ),
-                  )
-                : const Icon(Icons.add_location_alt_outlined, size: 20),
-            onPressed: _isSeeding ? null : _seedSampleSites,
+            tooltip: 'Add Sites',
+            icon: const Icon(Icons.add_location_alt_outlined, size: 20),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AddSitePage()),
+              );
+            },
           ),
           const SizedBox(width: 8),
         ],
@@ -79,23 +79,23 @@ class _SitesPageState extends State<SitesPage> {
       body: SafeArea(
         child: StreamBuilder<List<Site>>(
           stream: _sitesService.getSitesStream(),
-          initialData: SitesService.defaultSampleSites,
+          initialData: const <Site>[],
           builder: (context, snapshot) {
-            final sites = (snapshot.hasData && snapshot.data!.isNotEmpty)
-                ? snapshot.data!
-                : SitesService.defaultSampleSites;
+            final sites = snapshot.data ?? <Site>[];
 
             return SingleChildScrollView(
               child: ConstrainedContent(
                 maxWidth: 760,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 20,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (SitesService.isUsingFallback || snapshot.hasError) ...[
                       const NoticeBanner(
-                        message:
-                            'Demo / Fallback Mode: Cloud Firestore rules for "Sites" are pending in Firebase Console. Showing test sites (Jaipur North, Jaipur South, Ajmer Central). You can view details, edit, and save changes normally.',
+                        message: 'Demo / Fallback Mode: Cloud Firestore rules for "Sites" are pending in Firebase Console. Showing test sites (Jaipur North, Jaipur South, Ajmer Central). You can view details, edit, and save changes normally.',
                         isError: false,
                       ),
                       const SizedBox(height: 16),
@@ -120,7 +120,8 @@ class _SitesPageState extends State<SitesPage> {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: sites.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 12),
+                      separatorBuilder: (context, index) =>
+                          const SizedBox(height: 12),
                       itemBuilder: (context, index) {
                         final site = sites[index];
                         return _SiteItemCard(
@@ -129,7 +130,8 @@ class _SitesPageState extends State<SitesPage> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => SiteDetailsPage(initialSite: site),
+                                builder: (context) =>
+                                    SiteDetailsPage(initialSite: site),
                               ),
                             );
                           },

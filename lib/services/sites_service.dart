@@ -1,6 +1,8 @@
 import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+
 import '../models/site.dart';
 
 /// Service responsible for managing Firestore operations for the `Sites` collection.
@@ -14,7 +16,7 @@ class SitesService {
   final FirebaseFirestore _firestore;
 
   SitesService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+    : _firestore = firestore ?? FirebaseFirestore.instance;
 
   CollectionReference<Map<String, dynamic>> get _sitesCollection =>
       _firestore.collection('Sites');
@@ -70,22 +72,24 @@ class SitesService {
         firestoreSub = _sitesCollection.snapshots().listen(
           (snapshot) {
             isUsingFallback = false;
-            final remoteSites =
-                snapshot.docs.map((doc) => Site.fromFirestore(doc)).toList();
+            final remoteSites = snapshot.docs
+                .map((doc) => Site.fromFirestore(doc))
+                .toList();
+            remoteSites.sort(
+              (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+            );
 
-            if (remoteSites.isNotEmpty) {
-              remoteSites.sort((a, b) =>
-                  a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-              _localSites.clear();
-              _localSites.addAll(remoteSites);
-            }
+            _localSites
+              ..clear()
+              ..addAll(remoteSites);
             if (!controller.isClosed) {
               controller.add(List<Site>.from(_localSites));
             }
           },
           onError: (error) {
             debugPrint(
-                'SITES SERVICE: Firestore query error: $error. Falling back to local/demo sites.');
+              'SITES SERVICE: Firestore query error: $error. Falling back to local/demo sites.',
+            );
             isUsingFallback = true;
             if (!controller.isClosed) {
               controller.add(List<Site>.from(_localSites));
@@ -127,33 +131,37 @@ class SitesService {
       onListen: () {
         controller.add(findLocalSite());
 
-        firestoreSub = _sitesCollection.doc(siteId).snapshots().listen(
-          (doc) {
-            if (doc.exists) {
-              final site = Site.fromFirestore(doc);
-              final idx = _localSites.indexWhere((s) => s.id == siteId);
-              if (idx != -1) {
-                _localSites[idx] = site;
-              } else {
-                _localSites.add(site);
-              }
-              if (!controller.isClosed) {
-                controller.add(site);
-              }
-            } else {
-              if (!controller.isClosed) {
-                controller.add(findLocalSite());
-              }
-            }
-          },
-          onError: (error) {
-            debugPrint(
-                'SITES SERVICE: Firestore doc stream error: $error. Using local site.');
-            if (!controller.isClosed) {
-              controller.add(findLocalSite());
-            }
-          },
-        );
+        firestoreSub = _sitesCollection
+            .doc(siteId)
+            .snapshots()
+            .listen(
+              (doc) {
+                if (doc.exists) {
+                  final site = Site.fromFirestore(doc);
+                  final idx = _localSites.indexWhere((s) => s.id == siteId);
+                  if (idx != -1) {
+                    _localSites[idx] = site;
+                  } else {
+                    _localSites.add(site);
+                  }
+                  if (!controller.isClosed) {
+                    controller.add(site);
+                  }
+                } else {
+                  if (!controller.isClosed) {
+                    controller.add(findLocalSite());
+                  }
+                }
+              },
+              onError: (error) {
+                debugPrint(
+                  'SITES SERVICE: Firestore doc stream error: $error. Using local site.',
+                );
+                if (!controller.isClosed) {
+                  controller.add(findLocalSite());
+                }
+              },
+            );
 
         localSub = _localStreamController.stream.listen((_) {
           if (!controller.isClosed) {
@@ -184,12 +192,17 @@ class SitesService {
       'location': location.trim(),
       'beneficiaries': beneficiaries,
     };
+
     if (isActive != null) {
       data['isActive'] = isActive;
     }
 
-    // 1. Update in-memory / local cache
-    final index = _localSites.indexWhere((s) => s.id == siteId);
+    // 1. Save to Firestore first.
+    await _sitesCollection.doc(siteId).set(data, SetOptions(merge: true));
+
+    // 2. Update local cache only after Firestore succeeds.
+    final index = _localSites.indexWhere((site) => site.id == siteId);
+
     if (index != -1) {
       _localSites[index] = _localSites[index].copyWith(
         name: name.trim(),
@@ -198,29 +211,18 @@ class SitesService {
         isActive: isActive,
       );
     } else {
-      _localSites.add(Site(
-        id: siteId,
-        name: name.trim(),
-        location: location.trim(),
-        beneficiaries: beneficiaries,
-        isActive: isActive ?? true,
-      ));
+      _localSites.add(
+        Site(
+          id: siteId,
+          name: name.trim(),
+          location: location.trim(),
+          beneficiaries: beneficiaries,
+          isActive: isActive ?? true,
+        ),
+      );
     }
-    _localStreamController.add(List<Site>.from(_localSites));
 
-    // 2. Persist to Firestore
-    try {
-      await _sitesCollection.doc(siteId).set(data, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint(
-          'SITES SERVICE: Remote Firestore update error: $e. Saved to local state.');
-      // Do not rethrow if permission-denied so user flow remains uninterrupted
-      if (e.toString().contains('permission-denied') ||
-          e.toString().contains('PERMISSION_DENIED')) {
-        return;
-      }
-      rethrow;
-    }
+    _localStreamController.add(List<Site>.from(_localSites));
   }
 
   /// Seeds initial test sites to Firestore.
@@ -239,7 +241,8 @@ class SitesService {
       debugPrint('SITES SERVICE: Seeded test sites to Firestore successfully.');
     } catch (e) {
       debugPrint(
-          'SITES SERVICE: Firestore seed failed ($e). Local sites active.');
+        'SITES SERVICE: Firestore seed failed ($e). Local sites active.',
+      );
     }
   }
 
