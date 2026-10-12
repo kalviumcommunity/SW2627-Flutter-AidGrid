@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../models/site.dart';
 import '../../services/sites_service.dart';
 import '../../theme/app_theme.dart';
@@ -12,10 +13,7 @@ import '../../theme/components.dart';
 class EditSitePage extends StatefulWidget {
   final Site site;
 
-  const EditSitePage({
-    super.key,
-    required this.site,
-  });
+  const EditSitePage({super.key, required this.site});
 
   @override
   State<EditSitePage> createState() => _EditSitePageState();
@@ -37,8 +35,9 @@ class _EditSitePageState extends State<EditSitePage> {
     super.initState();
     _nameController = TextEditingController(text: widget.site.name);
     _locationController = TextEditingController(text: widget.site.location);
-    _beneficiariesController =
-        TextEditingController(text: widget.site.beneficiaries.toString());
+    _beneficiariesController = TextEditingController(
+      text: widget.site.beneficiaries.toString(),
+    );
     _isActive = widget.site.isActive;
   }
 
@@ -82,10 +81,14 @@ class _EditSitePageState extends State<EditSitePage> {
       );
 
       Navigator.pop(context);
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('EDIT SITE ERROR: $e');
+      debugPrintStack(stackTrace: stackTrace);
+
       if (!mounted) return;
+
       setState(() {
-        _errorMessage = 'Failed to save changes. Please try again.';
+        _errorMessage = 'Failed to save: $e';
       });
     } finally {
       if (mounted) {
@@ -99,9 +102,7 @@ class _EditSitePageState extends State<EditSitePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Edit Site'),
-      ),
+      appBar: AppBar(title: const Text('Edit Site')),
       body: SafeArea(
         child: SingleChildScrollView(
           child: ConstrainedContent(
@@ -190,7 +191,10 @@ class _EditSitePageState extends State<EditSitePage> {
 
                         // Active / Inactive Switch
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: AppColors.canvas,
                             borderRadius: BorderRadius.circular(10),
@@ -211,7 +215,9 @@ class _EditSitePageState extends State<EditSitePage> {
                                     ),
                                   ),
                                   Text(
-                                    _isActive ? 'Site is active for relief' : 'Site is temporarily inactive',
+                                    _isActive
+                                        ? 'Site is active for relief'
+                                        : 'Site is temporarily inactive',
                                     style: const TextStyle(
                                       fontSize: 12,
                                       color: AppColors.textMuted,

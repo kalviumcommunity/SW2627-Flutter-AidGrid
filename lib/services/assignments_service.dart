@@ -273,6 +273,7 @@ class AssignmentsService {
   }
 
   /// Creates a new assignment in the `Assignments` collection.
+
   Future<String> createAssignment({
     required String siteId,
     required String volunteerId,
@@ -281,7 +282,7 @@ class AssignmentsService {
     String? siteName,
   }) async {
     final assignment = Assignment(
-      id: 'assign_${DateTime.now().millisecondsSinceEpoch}',
+      id: 'temporary',
       siteId: siteId.trim(),
       volunteerId: volunteerId.trim(),
       taskDescription: taskDescription.trim(),
@@ -290,20 +291,9 @@ class AssignmentsService {
       siteName: siteName?.trim(),
     );
 
-    String docId = assignment.id;
-    try {
-      final docRef = await _assignmentsCollection.add(assignment.toMap());
-      docId = docRef.id;
-    } catch (e) {
-      isUsingFallback = true;
-      lastFirestoreError = e.toString();
-    }
+    final docRef = await _assignmentsCollection.add(assignment.toMap());
 
-    final localItem = assignment.copyWith(id: docId);
-    _localAssignments.insert(0, localItem);
-    _localStreamController.add(List<Assignment>.from(_localAssignments));
-
-    return docId;
+    return docRef.id;
   }
 
   /// Deletes an assignment (admin only).

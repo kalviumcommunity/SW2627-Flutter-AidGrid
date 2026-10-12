@@ -604,8 +604,8 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                               // Resolve community site name
                               final site = siteMap[assignment.siteId];
                               final siteName =
-                                  assignment.siteName ??
                                   site?.name ??
+                                  assignment.siteName ??
                                   (assignment.siteId.isNotEmpty
                                       ? 'Site: ${assignment.siteId}'
                                       : 'Central Distribution Hub');
