@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firebase_options.dart';
 import 'screens/assignments/assignments_page.dart';
+import 'screens/distribution/distribution_history_page.dart';
 import 'screens/sites/sites_page.dart';
 import 'theme/app_theme.dart';
 import 'theme/components.dart';
@@ -681,6 +682,46 @@ class AdminDashboardPage extends StatelessWidget {
                           );
                         },
                         child: const Text('Open Assignments'),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                SoberCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.history_rounded, size: 28),
+
+                      const SizedBox(height: 12),
+
+                      Text(
+                        'Distribution History',
+                        style: AppTypography.titleMedium,
+                      ),
+
+                      const SizedBox(height: 6),
+
+                      Text(
+                        'View real-time records and audit logs of food and ration dispatches.',
+                        style: AppTypography.bodyMedium,
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const DistributionHistoryPage(isAdmin: true),
+                            ),
+                          );
+                        },
+                        child: const Text('Open History'),
                       ),
                     ],
                   ),
@@ -1400,6 +1441,27 @@ class DashboardPage extends StatelessWidget {
                     },
                     icon: const Icon(Icons.assignment_outlined),
                     label: const Text('View My Assignments'),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => DistributionHistoryPage(
+                            isAdmin: false,
+                            volunteerId: user?.uid,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.history_rounded),
+                    label: const Text('View Distribution History'),
                   ),
                 ),
 
