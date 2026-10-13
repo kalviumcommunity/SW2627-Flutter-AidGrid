@@ -4,13 +4,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/distribution_record.dart';
 
-/// Dedicated service responsible for retrieving distribution records from Firestore.
+/// Dedicated service responsible for retrieving distribution records from Cloud Firestore.
 ///
 /// Strictly isolated to the Distribution History module:
 /// - Reads from the `Distributions` Firestore collection.
-/// - Does not modify or deduct inventory quantities.
-/// - Does not create production distributions.
-/// - Provides fallback handling when Firestore security rules are pending in Firebase Console.
+/// - Converts Firestore documents into immutable `DistributionRecord` instances.
+/// - Sorts records newest first (`distributedAt` descending).
+/// - Exposes real-time streams for reactive UI updates.
+/// - Does NOT write to `Distributions` or modify `Inventory`.
 class DistributionHistoryService {
   final FirebaseFirestore _firestore;
 
@@ -20,13 +21,47 @@ class DistributionHistoryService {
   CollectionReference<Map<String, dynamic>> get _distributionsCollection =>
       _firestore.collection('Distributions');
 
-  /// Indicates whether the service is operating in fallback mode due to
-  /// pending/restricted Firestore security rules in Firebase Console.
-  static bool isUsingFallback = false;
-  static String? lastFirestoreError;
+  /// Streams real-time distribution history across the entire organization,
+  /// sorted newest first.
+  ///
+  /// Emits real Firestore data. If the collection is empty, emits an empty list `[]`.
+  /// Propagates Firestore errors (e.g., permission-denied) to the stream.
+  Stream<List<DistributionRecord>> getDistributionHistoryStream() {
+    return _distributionsCollection.snapshots().map((snapshot) {
+      final records = snapshot.docs
+          .map((doc) => DistributionRecord.fromFirestore(doc))
+          .toList();
+      records.sort((a, b) => b.distributedAt.compareTo(a.distributedAt));
+      return records;
+    });
+  }
 
-  /// Default sample distributions for demonstration when Firestore security rules
-  /// are not yet deployed in the Firebase Console.
+  /// Streams distribution history specifically recorded by a volunteer's UID,
+  /// sorted newest first.
+  ///
+  /// Uses `.where('volunteerId', isEqualTo: volunteerId)` to adhere to scoped
+  /// Firestore security rules and prevent unauthorized data leakage.
+  Stream<List<DistributionRecord>> getVolunteerDistributionHistoryStream(
+    String volunteerId,
+  ) {
+    final vId = volunteerId.trim();
+    if (vId.isEmpty) {
+      return Stream.value(<DistributionRecord>[]);
+    }
+
+    return _distributionsCollection
+        .where('volunteerId', isEqualTo: vId)
+        .snapshots()
+        .map((snapshot) {
+          final records = snapshot.docs
+              .map((doc) => DistributionRecord.fromFirestore(doc))
+              .toList();
+          records.sort((a, b) => b.distributedAt.compareTo(a.distributedAt));
+          return records;
+        });
+  }
+
+  /// Default sample distributions for automated unit testing and preview fixtures.
   static List<DistributionRecord> getDefaultSampleDistributions() {
     final now = DateTime.now();
     return [
@@ -81,146 +116,5 @@ class DistributionHistoryService {
         distributedAt: now.subtract(const Duration(days: 1)),
       ),
     ];
-  }
-
-  static final List<DistributionRecord> _localDistributions = [];
-  static final StreamController<List<DistributionRecord>>
-  _localStreamController =
-      StreamController<List<DistributionRecord>>.broadcast();
-
-  static void _ensureInitialized() {
-    if (_localDistributions.isEmpty) {
-      _localDistributions.addAll(getDefaultSampleDistributions());
-    }
-  }
-
-  /// Streams real-time distribution history across the entire organization,
-  /// sorted newest first.
-  Stream<List<DistributionRecord>> getDistributionHistoryStream() {
-    _ensureInitialized();
-
-    late StreamController<List<DistributionRecord>> controller;
-    StreamSubscription? firestoreSub;
-    StreamSubscription? localSub;
-
-    controller = StreamController<List<DistributionRecord>>(
-      onListen: () {
-        if (isUsingFallback) {
-          final sorted = List<DistributionRecord>.from(_localDistributions)
-            ..sort((a, b) => b.distributedAt.compareTo(a.distributedAt));
-          controller.add(sorted);
-        }
-
-        // Connect to Firestore collection
-        firestoreSub = _distributionsCollection.snapshots().listen(
-          (snapshot) {
-            isUsingFallback = false;
-            lastFirestoreError = null;
-            final records = snapshot.docs
-                .map((doc) => DistributionRecord.fromFirestore(doc))
-                .toList();
-            records.sort((a, b) => b.distributedAt.compareTo(a.distributedAt));
-
-            _localDistributions
-              ..clear()
-              ..addAll(records);
-
-            if (!controller.isClosed) {
-              controller.add(records);
-            }
-          },
-          onError: (error) {
-            isUsingFallback = true;
-            lastFirestoreError = error.toString();
-            final sorted = List<DistributionRecord>.from(_localDistributions)
-              ..sort((a, b) => b.distributedAt.compareTo(a.distributedAt));
-            if (!controller.isClosed) {
-              controller.add(sorted);
-            }
-          },
-        );
-
-        localSub = _localStreamController.stream.listen((records) {
-          if (!controller.isClosed) {
-            final sorted = List<DistributionRecord>.from(records)
-              ..sort((a, b) => b.distributedAt.compareTo(a.distributedAt));
-            controller.add(sorted);
-          }
-        });
-      },
-      onCancel: () {
-        firestoreSub?.cancel();
-        localSub?.cancel();
-      },
-    );
-
-    return controller.stream;
-  }
-
-  /// Streams distribution history for a specific volunteer UID.
-  Stream<List<DistributionRecord>> getVolunteerDistributionHistoryStream(
-    String volunteerId,
-  ) {
-    _ensureInitialized();
-
-    late StreamController<List<DistributionRecord>> controller;
-    StreamSubscription? firestoreSub;
-    StreamSubscription? localSub;
-
-    List<DistributionRecord> filter(List<DistributionRecord> list) {
-      if (volunteerId.isEmpty) return list;
-      return list
-          .where(
-            (r) =>
-                r.volunteerId == volunteerId || r.id.startsWith('dist-sample-'),
-          )
-          .toList()
-        ..sort((a, b) => b.distributedAt.compareTo(a.distributedAt));
-    }
-
-    controller = StreamController<List<DistributionRecord>>(
-      onListen: () {
-        controller.add(filter(_localDistributions));
-
-        firestoreSub = _distributionsCollection
-            .where('volunteerId', isEqualTo: volunteerId)
-            .snapshots()
-            .listen(
-              (snapshot) {
-                isUsingFallback = false;
-                lastFirestoreError = null;
-                final records = snapshot.docs
-                    .map((doc) => DistributionRecord.fromFirestore(doc))
-                    .toList();
-                records.sort(
-                  (a, b) => b.distributedAt.compareTo(a.distributedAt),
-                );
-
-                if (!controller.isClosed) {
-                  controller.add(records);
-                }
-              },
-              onError: (error) {
-                isUsingFallback = true;
-                lastFirestoreError = error.toString();
-                if (!controller.isClosed) {
-                  controller.add(filter(_localDistributions));
-                }
-              },
-            );
-
-        localSub = _localStreamController.stream.listen((records) {
-          if (!controller.isClosed) {
-            controller.add(filter(records));
-          }
-        });
-      },
-      onCancel: () {
-        firestoreSub?.cancel();
-        localSub?.cancel();
-      },
-    );
-
-    return controller.stream;
   }
 }
