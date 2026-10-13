@@ -1,1 +1,31 @@
-{"flutter":{"platforms":{"dart":{"lib/firebase_options.dart":{"projectId":"aidgrid-717fe","configurations":{"web":"1:774716522366:web:59bba8453595ccf1127d2f"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "aidgrid-717fe",
+          "configurations": {
+            "web": "1:774716522366:web:59bba8453595ccf1127d2f"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ]
+}
