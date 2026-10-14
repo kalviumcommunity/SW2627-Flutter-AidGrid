@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/distribution_record.dart';
@@ -7,13 +8,17 @@ import '../../theme/components.dart';
 
 /// DistributionHistoryPage displays a real-time, chronological log of food
 /// and ration distributions across community sites.
+///
+/// Role-based access:
+/// - Admin (`isAdmin = true`): Views all distributions across the organization.
+/// - Volunteer (`isAdmin = false`): Scoped to the logged-in volunteer's distributions.
 class DistributionHistoryPage extends StatefulWidget {
   final bool isAdmin;
   final String? volunteerId;
 
   const DistributionHistoryPage({
     super.key,
-    this.isAdmin = true,
+    this.isAdmin = false,
     this.volunteerId,
   });
 
@@ -72,14 +77,12 @@ class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
   }
 
   Stream<List<DistributionRecord>> get _stream {
-    if (!widget.isAdmin &&
-        widget.volunteerId != null &&
-        widget.volunteerId!.isNotEmpty) {
-      return _historyService.getVolunteerDistributionHistoryStream(
-        widget.volunteerId!,
-      );
+    if (widget.isAdmin) {
+      return _historyService.getDistributionHistoryStream();
     }
-    return _historyService.getDistributionHistoryStream();
+    final uid =
+        widget.volunteerId ?? FirebaseAuth.instance.currentUser?.uid ?? '';
+    return _historyService.getVolunteerDistributionHistoryStream(uid);
   }
 
   @override
@@ -95,7 +98,7 @@ class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
           key: ValueKey(_retryKey),
           stream: _stream,
           builder: (context, snapshot) {
-            // 1. Loading state
+            // 1. Loading state while initial request is pending
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(
                 child: SizedBox(
@@ -109,31 +112,60 @@ class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
               );
             }
 
-            // 2. Error state with retry option (when no data available)
-            if (snapshot.hasError &&
-                (snapshot.data == null || snapshot.data!.isEmpty)) {
+            // 2. Error state with retry option when Firestore query fails
+            if (snapshot.hasError) {
               return Center(
                 child: ConstrainedContent(
                   maxWidth: 520,
                   padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      NoticeBanner(
-                        message:
-                            'Unable to load distribution history: ${snapshot.error}',
-                      ),
-                      const SizedBox(height: 16),
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.refresh, size: 16),
-                        label: const Text('Retry'),
-                        onPressed: () {
-                          setState(() {
-                            _retryKey++;
-                          });
-                        },
-                      ),
-                    ],
+                  child: SoberCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 28,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: AppColors.errorContainer,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.error_outline_rounded,
+                            color: AppColors.error,
+                            size: 26,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Unable to Load Distribution History',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${snapshot.error}',
+                          textAlign: TextAlign.center,
+                          style: AppTypography.bodyMedium,
+                        ),
+                        const SizedBox(height: 20),
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.refresh, size: 16),
+                          label: const Text('Retry'),
+                          onPressed: () {
+                            setState(() {
+                              _retryKey++;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -141,7 +173,7 @@ class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
 
             final allRecords = snapshot.data ?? [];
 
-            // 3. Global Empty State (no distributions recorded yet)
+            // 3. Clean, helpful empty state when no records exist
             if (allRecords.isEmpty) {
               return Center(
                 child: ConstrainedContent(
@@ -169,19 +201,23 @@ class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        const Text(
-                          'No Distributions Recorded Yet',
-                          style: TextStyle(
+                        Text(
+                          widget.isAdmin
+                              ? 'No Distributions Recorded Yet'
+                              : 'No Personal Distributions Found',
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                             color: AppColors.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 6),
-                        const Text(
-                          'When food and supply dispatches are recorded, they will appear chronologically in this audit log.',
+                        Text(
+                          widget.isAdmin
+                              ? 'When food and supply dispatches are recorded across communities, they will appear chronologically in this audit log.'
+                              : 'You have not recorded any food or ration distributions yet. Once distributions are submitted, they will be listed here.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 13,
                             color: AppColors.textSecondary,
                             height: 1.4,
@@ -194,7 +230,7 @@ class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
               );
             }
 
-            // Filter by search query if provided
+            // Filter by search query if user has typed into search bar
             final filteredRecords = _searchQuery.trim().isEmpty
                 ? allRecords
                 : allRecords.where((r) {
@@ -214,17 +250,6 @@ class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Demo / Fallback notice banner if Firestore rules pending
-                    if (DistributionHistoryService.isUsingFallback ||
-                        snapshot.hasError) ...[
-                      NoticeBanner(
-                        message:
-                            'Notice: Cloud Firestore rules for "Distributions" are pending in Firebase Console (${DistributionHistoryService.lastFirestoreError ?? snapshot.error ?? "permission-denied"}). Showing sample distribution history records.',
-                        isError: false,
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-
                     // Header with count badge
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -235,7 +260,7 @@ class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
                         ),
                         SoberBadge(
                           label:
-                              '${filteredRecords.length} of ${allRecords.length} dispatches',
+                              '${filteredRecords.length} of ${allRecords.length} records',
                           backgroundColor: AppColors.secondaryContainer,
                           textColor: AppColors.textSecondary,
                         ),
@@ -271,7 +296,7 @@ class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Filtered empty state
+                    // Filtered empty state (search query returned no results)
                     if (filteredRecords.isEmpty) ...[
                       Center(
                         child: Padding(
@@ -393,13 +418,26 @@ class _DistributionRecordCard extends StatelessWidget {
               const SizedBox(width: 8),
               // Quantity pill badge
               SoberBadge(
-                label: '${record.quantity} ${record.unit}',
+                label: record.unit.isNotEmpty
+                    ? '${record.quantity} ${record.unit}'
+                    : '${record.quantity}',
                 backgroundColor: AppColors.successContainer,
                 textColor: AppColors.success,
                 icon: Icons.check_circle_outline,
               ),
             ],
           ),
+
+          if (record.assignmentId != null &&
+              record.assignmentId!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SoberBadge(
+              label: 'Assignment: ${record.assignmentId}',
+              backgroundColor: AppColors.secondaryContainer,
+              textColor: AppColors.textSecondary,
+              icon: Icons.assignment_outlined,
+            ),
+          ],
 
           const SizedBox(height: 12),
           const Divider(height: 1),
