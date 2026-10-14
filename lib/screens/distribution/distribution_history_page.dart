@@ -80,8 +80,14 @@ class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
     if (widget.isAdmin) {
       return _historyService.getDistributionHistoryStream();
     }
+
     final uid =
         widget.volunteerId ?? FirebaseAuth.instance.currentUser?.uid ?? '';
+
+    if (uid.isEmpty) {
+      return const Stream.empty();
+    }
+
     return _historyService.getVolunteerDistributionHistoryStream(uid);
   }
 

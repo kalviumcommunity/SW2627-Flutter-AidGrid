@@ -3,6 +3,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'screens/distribution/record_distribution_page.dart';
+
 import 'firebase_options.dart';
 import 'screens/assignments/assignments_page.dart';
 import 'screens/distribution/distribution_history_page.dart';
@@ -722,6 +724,45 @@ class AdminDashboardPage extends StatelessWidget {
                           );
                         },
                         child: const Text('Open History'),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                SoberCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.local_shipping_outlined, size: 28),
+                      const SizedBox(height: 12),
+
+                      Text(
+                        'Record Distribution',
+                        style: AppTypography.titleMedium,
+                      ),
+
+                      const SizedBox(height: 6),
+
+                      Text(
+                        'Record food deliveries and update inventory automatically.',
+                        style: AppTypography.bodyMedium,
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const RecordDistributionPage(),
+                            ),
+                          );
+                        },
+                        child: const Text('Record Distribution'),
                       ),
                     ],
                   ),
