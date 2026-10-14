@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/distribution_record.dart';
 
@@ -13,10 +14,13 @@ class DistributionService {
     required String itemId,
     required String siteId,
     required int quantity,
-    required String volunteerId,
-    required String volunteerName,
     String? assignmentId,
   }) async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      throw StateError('You must be logged in to record a distribution.');
+    }
     if (quantity <= 0) {
       throw ArgumentError('Quantity must be greater than zero.');
     }
@@ -68,8 +72,8 @@ class DistributionService {
         siteName: siteName,
         quantity: quantity,
         unit: unit,
-        volunteerId: volunteerId,
-        volunteerName: volunteerName,
+        volunteerId: user.uid,
+        volunteerName: user.displayName ?? user.email ?? 'Unknown',
         distributedAt: DateTime.now(),
         assignmentId: assignmentId,
       );

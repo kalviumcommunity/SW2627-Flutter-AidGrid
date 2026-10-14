@@ -81,7 +81,23 @@ match /Distributions/{distributionId} {
       || resource.data.volunteerId == request.auth.uid
     );
 
-  allow create, update, delete: if false;
+  allow create: if request.auth != null
+  && get(
+    /databases/$(database)/documents/users/$(request.auth.uid)
+  ).data.role == 'ADMIN'
+  && request.resource.data.quantity is int
+  && request.resource.data.quantity > 0
+  && exists(
+    /databases/$(database)/documents/Inventory/$(request.resource.data.itemId)
+  )
+  && getAfter(
+    /databases/$(database)/documents/Inventory/$(request.resource.data.itemId)
+  ).data.quantity
+    == get(
+      /databases/$(database)/documents/Inventory/$(request.resource.data.itemId)
+    ).data.quantity - request.resource.data.quantity;
+allow update: if false;
+allow delete: if false;
 }
 
   }
