@@ -15,6 +15,7 @@ class DistributionService {
     required String siteId,
     required int quantity,
     String? assignmentId,
+    required String volunteerId,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -28,11 +29,13 @@ class DistributionService {
     final itemRef = _firestore.collection('Inventory').doc(itemId);
     final siteRef = _firestore.collection('Sites').doc(siteId);
     final distributionRef = _firestore.collection('Distributions').doc();
+    final volunteerRef = _firestore.collection('users').doc(volunteerId);
 
     await _firestore.runTransaction((transaction) async {
       // Read both documents before making any writes.
       final itemSnapshot = await transaction.get(itemRef);
       final siteSnapshot = await transaction.get(siteRef);
+      final volunteerSnapshot = await transaction.get(volunteerRef);
 
       if (!itemSnapshot.exists) {
         throw StateError('The selected inventory item no longer exists.');
@@ -40,6 +43,16 @@ class DistributionService {
 
       if (!siteSnapshot.exists) {
         throw StateError('The selected site no longer exists.');
+      }
+
+      if (!volunteerSnapshot.exists) {
+        throw StateError('The selected volunteer no longer exists.');
+      }
+
+      final volunteerData = volunteerSnapshot.data()!;
+
+      if (volunteerData['role'] != 'VOLUNTEER') {
+        throw StateError('The selected user is not a volunteer.');
       }
 
       final itemData = itemSnapshot.data()!;
@@ -72,8 +85,11 @@ class DistributionService {
         siteName: siteName,
         quantity: quantity,
         unit: unit,
-        volunteerId: user.uid,
-        volunteerName: user.displayName ?? user.email ?? 'Unknown',
+        volunteerId: volunteerId,
+        volunteerName:
+            volunteerData['name'] as String? ??
+            volunteerData['email'] as String? ??
+            'Unknown',
         distributedAt: DateTime.now(),
         assignmentId: assignmentId,
       );

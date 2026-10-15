@@ -1381,49 +1381,123 @@ class DashboardPage extends StatelessWidget {
                 Text('CURRENT STATUS', style: AppTypography.labelSmall),
                 const SizedBox(height: 12),
 
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final isNarrow = constraints.maxWidth < 540;
-                    if (isNarrow) {
-                      return const Column(
-                        children: [
-                          StatMetricTile(
-                            label: 'Inventory',
-                            value: '420 kg',
-                            caption: 'Rice, wheat & dry rations',
-                            icon: Icons.inventory_2_outlined,
-                          ),
-                          SizedBox(height: 12),
-                          StatMetricTile(
-                            label: 'Assignments',
-                            value: '3 Active',
-                            caption: '2 in transit, 1 preparing',
-                            icon: Icons.local_shipping_outlined,
-                          ),
-                        ],
+                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: FirebaseFirestore.instance
+                      .collection('Inventory')
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.primary,
+                        ),
                       );
                     }
 
-                    return const Row(
-                      children: [
-                        Expanded(
-                          child: StatMetricTile(
-                            label: 'Inventory',
-                            value: '420 kg',
-                            caption: 'Rice, wheat & dry rations',
-                            icon: Icons.inventory_2_outlined,
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: StatMetricTile(
-                            label: 'Assignments',
-                            value: '3 Active',
-                            caption: '2 in transit, 1 preparing',
-                            icon: Icons.local_shipping_outlined,
-                          ),
-                        ),
-                      ],
+                    if (snapshot.hasError) {
+                      return const Text('Unable to load inventory total.');
+                    }
+
+                    final items = snapshot.data?.docs ?? [];
+
+                    final totalKg = items.fold<int>(0, (total, doc) {
+                      final quantity = doc.data()['quantity'];
+                      return total + (quantity is num ? quantity.toInt() : 0);
+                    });
+
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isNarrow = constraints.maxWidth < 540;
+
+                        final inventoryTile = StatMetricTile(
+                          label: 'Inventory',
+                          value: '$totalKg kg',
+                          caption: '${items.length} inventory items tracked',
+                          icon: Icons.inventory_2_outlined,
+                        );
+
+                        final userId = FirebaseAuth.instance.currentUser?.uid;
+
+                        final assignmentsTile = userId == null
+                            ? const StatMetricTile(
+                                label: 'Assignments',
+                                value: '—',
+                                caption: 'No signed-in volunteer',
+                                icon: Icons.local_shipping_outlined,
+                              )
+                            : StreamBuilder<
+                                QuerySnapshot<Map<String, dynamic>>
+                              >(
+                                stream: FirebaseFirestore.instance
+                                    .collection('Assignments')
+                                    .where('volunteerId', isEqualTo: userId)
+                                    .snapshots(),
+                                builder: (context, assignmentSnapshot) {
+                                  if (assignmentSnapshot.connectionState ==
+                                      ConnectionState.waiting) {
+                                    return const StatMetricTile(
+                                      label: 'Assignments',
+                                      value: '…',
+                                      caption: 'Loading assignments',
+                                      icon: Icons.local_shipping_outlined,
+                                    );
+                                  }
+
+                                  if (assignmentSnapshot.hasError) {
+                                    return const StatMetricTile(
+                                      label: 'Assignments',
+                                      value: '—',
+                                      caption: 'Unable to load assignments',
+                                      icon: Icons.local_shipping_outlined,
+                                    );
+                                  }
+
+                                  final assignments =
+                                      assignmentSnapshot.data?.docs ?? [];
+
+                                  var pending = 0;
+                                  var inProgress = 0;
+
+                                  for (final doc in assignments) {
+                                    final status = doc.data()['status'];
+
+                                    if (status == 'Pending') {
+                                      pending++;
+                                    } else if (status == 'In Progress') {
+                                      inProgress++;
+                                    }
+                                  }
+
+                                  final activeCount = pending + inProgress;
+
+                                  return StatMetricTile(
+                                    label: 'Assignments',
+                                    value: '$activeCount Active',
+                                    caption:
+                                        '$pending pending, $inProgress in progress',
+                                    icon: Icons.local_shipping_outlined,
+                                  );
+                                },
+                              );
+
+                        if (isNarrow) {
+                          return Column(
+                            children: [
+                              inventoryTile,
+                              const SizedBox(height: 12),
+                              assignmentsTile,
+                            ],
+                          );
+                        }
+
+                        return Row(
+                          children: [
+                            Expanded(child: inventoryTile),
+                            const SizedBox(width: 12),
+                            Expanded(child: assignmentsTile),
+                          ],
+                        );
+                      },
                     );
                   },
                 ),
@@ -1524,32 +1598,94 @@ class DashboardPage extends StatelessWidget {
 
                 SoberCard(
                   padding: EdgeInsets.zero,
-                  child: Column(
-                    children: const [
-                      _ActivityTile(
-                        icon: Icons.grain_outlined,
-                        title: 'Rice distributed',
-                        location: 'Shelter Point 02 · Zone B',
-                        time: '18m ago',
-                        quantity: '20 kg',
-                      ),
-                      Divider(height: 1),
-                      _ActivityTile(
-                        icon: Icons.water_drop_outlined,
-                        title: 'Drinking water crates dispatched',
-                        location: 'Community Center 07',
-                        time: '1h ago',
-                        quantity: '40 L',
-                      ),
-                      Divider(height: 1),
-                      _ActivityTile(
-                        icon: Icons.medication_outlined,
-                        title: 'First-aid emergency kits',
-                        location: 'Mobile Clinic Unit 01',
-                        time: '3h ago',
-                        quantity: '12 kits',
-                      ),
-                    ],
+                  child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: FirebaseFirestore.instance
+                        .collection('Distributions')
+                        .where('volunteerId', isEqualTo: user?.uid)
+                        .orderBy('distributedAt', descending: true)
+                        .limit(3)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.all(20),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+
+                      if (snapshot.hasError) {
+                        debugPrint(
+                          'RECENT DISPATCHES ERROR: ${snapshot.error}',
+                        );
+
+                        return Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Text(
+                            'Unable to load recent dispatches: ${snapshot.error}',
+                          ),
+                        );
+                      }
+
+                      final records = snapshot.data?.docs ?? [];
+
+                      if (records.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.all(20),
+                          child: Center(
+                            child: Text('No distributions recorded yet.'),
+                          ),
+                        );
+                      }
+
+                      return Column(
+                        children: [
+                          for (int i = 0; i < records.length; i++) ...[
+                            if (i > 0) const Divider(height: 1),
+                            Builder(
+                              builder: (context) {
+                                final data = records[i].data();
+
+                                final itemName =
+                                    data['itemName'] as String? ??
+                                    'Unknown item';
+                                final siteName =
+                                    data['siteName'] as String? ??
+                                    'Unknown site';
+                                final quantity = data['quantity'];
+                                final unit = data['unit'] as String? ?? '';
+                                final timestamp = data['distributedAt'];
+
+                                String timeLabel = 'Time unavailable';
+
+                                if (timestamp is Timestamp) {
+                                  final difference = DateTime.now().difference(
+                                    timestamp.toDate(),
+                                  );
+
+                                  if (difference.inSeconds < 60) {
+                                    timeLabel = 'Just now';
+                                  } else if (difference.inMinutes < 60) {
+                                    timeLabel = '${difference.inMinutes}m ago';
+                                  } else if (difference.inHours < 24) {
+                                    timeLabel = '${difference.inHours}h ago';
+                                  } else {
+                                    timeLabel = '${difference.inDays}d ago';
+                                  }
+                                }
+
+                                return _ActivityTile(
+                                  icon: Icons.local_shipping_outlined,
+                                  title: '$itemName distributed',
+                                  location: siteName,
+                                  time: timeLabel,
+                                  quantity: '$quantity $unit',
+                                );
+                              },
+                            ),
+                          ],
+                        ],
+                      );
+                    },
                   ),
                 ),
               ],
