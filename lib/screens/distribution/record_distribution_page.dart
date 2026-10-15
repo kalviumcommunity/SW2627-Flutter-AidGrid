@@ -13,14 +13,19 @@ class RecordDistributionPage extends StatefulWidget {
 class _RecordDistributionPageState extends State<RecordDistributionPage> {
   String? _selectedSiteId;
   String? _selectedItemId;
+  String? _selectedVolunteerId;
   final TextEditingController _quantityController = TextEditingController();
   bool _isSubmitting = false;
 
   Future<void> _submitDistribution() async {
-    if (_selectedSiteId == null || _selectedItemId == null) {
+    if (_selectedSiteId == null ||
+        _selectedItemId == null ||
+        _selectedVolunteerId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select a site and an inventory item.'),
+          content: Text(
+            'Please select a site, an inventory item, and a volunteer.',
+          ),
         ),
       );
       return;
@@ -46,6 +51,7 @@ class _RecordDistributionPageState extends State<RecordDistributionPage> {
         itemId: _selectedItemId!,
         siteId: _selectedSiteId!,
         quantity: quantity,
+        volunteerId: _selectedVolunteerId!,
       );
 
       if (!mounted) return;
@@ -121,6 +127,64 @@ class _RecordDistributionPageState extends State<RecordDistributionPage> {
                     });
                   },
                 ),
+
+                const SizedBox(height: 16),
+
+                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: FirebaseFirestore.instance
+                      .collection('users')
+                      .where('role', isEqualTo: 'VOLUNTEER')
+                      .snapshots(),
+                  builder: (context, volunteerSnapshot) {
+                    if (volunteerSnapshot.hasError) {
+                      debugPrint(
+                        'VOLUNTEER LOAD ERROR: ${volunteerSnapshot.error}',
+                      );
+
+                      return Text(
+                        'Could not load volunteers: ${volunteerSnapshot.error}',
+                      );
+                    }
+
+                    if (volunteerSnapshot.connectionState ==
+                        ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final volunteers = volunteerSnapshot.data!.docs;
+
+                    if (volunteers.isEmpty) {
+                      return const Text('No registered volunteers found.');
+                    }
+
+                    return DropdownButtonFormField<String>(
+                      initialValue: _selectedVolunteerId,
+                      decoration: const InputDecoration(
+                        labelText: 'Select a volunteer',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: volunteers.map((doc) {
+                        final data = doc.data();
+                        final name =
+                            data['name'] as String? ??
+                            data['email'] as String? ??
+                            'Unnamed volunteer';
+
+                        return DropdownMenuItem<String>(
+                          value: doc.id,
+                          child: Text(name),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedVolunteerId = value;
+                        });
+                      },
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 16),
 
                 const SizedBox(height: 16),
 
