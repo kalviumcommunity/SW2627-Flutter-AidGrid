@@ -15,26 +15,18 @@ import '../../theme/components.dart';
 class DistributionHistoryPage extends StatefulWidget {
   final bool isAdmin;
   final String? volunteerId;
+  final DistributionHistoryService? historyService;
+  final Stream<List<DistributionRecord>>? recordsStream;
 
   const DistributionHistoryPage({
     super.key,
     this.isAdmin = false,
     this.volunteerId,
+    this.historyService,
+    this.recordsStream,
   });
 
-  @override
-  State<DistributionHistoryPage> createState() =>
-      _DistributionHistoryPageState();
-}
-
-class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
-  final DistributionHistoryService _historyService =
-      DistributionHistoryService();
-
-  int _retryKey = 0;
-  String _searchQuery = '';
-
-  static String _monthName(int month) {
+  static String monthName(int month) {
     const months = [
       'Jan',
       'Feb',
@@ -52,33 +44,58 @@ class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
     return (month >= 1 && month <= 12) ? months[month - 1] : '';
   }
 
-  static String _formatTime(DateTime dt) {
+  static String formatTime(DateTime dt) {
     final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
     final minute = dt.minute.toString().padLeft(2, '0');
     final period = dt.hour >= 12 ? 'PM' : 'AM';
     return '$hour:$minute $period';
   }
 
-  static String _formatDate(DateTime dt) {
+  static String formatDate(DateTime dt) {
     final now = DateTime.now();
     final difference = now.difference(dt);
+    final timeStr = formatTime(dt);
 
-    if (difference.inMinutes < 60) {
+    if (difference.inMinutes < 60 && difference.inMinutes >= 0) {
       final mins = difference.inMinutes;
-      return mins <= 1 ? 'Just now' : '$mins mins ago';
-    } else if (difference.inHours < 24 && now.day == dt.day) {
-      return 'Today at ${_formatTime(dt)}';
+      final rel = mins <= 1 ? 'Just now' : '$mins mins ago';
+      return '$rel · $timeStr';
+    } else if (difference.inHours < 24 &&
+        now.day == dt.day &&
+        now.month == dt.month &&
+        now.year == dt.year) {
+      return 'Today · $timeStr';
     } else if (difference.inHours < 48 &&
-        now.subtract(const Duration(days: 1)).day == dt.day) {
-      return 'Yesterday at ${_formatTime(dt)}';
+        now.subtract(const Duration(days: 1)).day == dt.day &&
+        now.subtract(const Duration(days: 1)).month == dt.month &&
+        now.subtract(const Duration(days: 1)).year == dt.year) {
+      return 'Yesterday · $timeStr';
     }
 
-    return '${dt.day} ${_monthName(dt.month)} ${dt.year} · ${_formatTime(dt)}';
+    return '${dt.day} ${monthName(dt.month)} ${dt.year} · $timeStr';
   }
 
+  @override
+  State<DistributionHistoryPage> createState() =>
+      _DistributionHistoryPageState();
+}
+
+class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
+  DistributionHistoryService? _historyService;
+
+  int _retryKey = 0;
+  String _searchQuery = '';
+
+  DistributionHistoryService get _effectiveHistoryService =>
+      _historyService ??= widget.historyService ?? DistributionHistoryService();
+
   Stream<List<DistributionRecord>> get _stream {
+    if (widget.recordsStream != null) {
+      return widget.recordsStream!;
+    }
+
     if (widget.isAdmin) {
-      return _historyService.getDistributionHistoryStream();
+      return _effectiveHistoryService.getDistributionHistoryStream();
     }
 
     final uid =
@@ -88,7 +105,7 @@ class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
       return const Stream.empty();
     }
 
-    return _historyService.getVolunteerDistributionHistoryStream(uid);
+    return _effectiveHistoryService.getVolunteerDistributionHistoryStream(uid);
   }
 
   @override
@@ -207,11 +224,9 @@ class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        Text(
-                          widget.isAdmin
-                              ? 'No Distributions Recorded Yet'
-                              : 'No Personal Distributions Found',
-                          style: const TextStyle(
+                        const Text(
+                          'No distributions recorded yet',
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                             color: AppColors.textPrimary,
@@ -342,9 +357,11 @@ class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
                             const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           final record = filteredRecords[index];
-                          return _DistributionRecordCard(
+                          return DistributionRecordCard(
                             record: record,
-                            formattedDate: _formatDate(record.distributedAt),
+                            formattedDate: DistributionHistoryPage.formatDate(
+                              record.distributedAt,
+                            ),
                           );
                         },
                       ),
@@ -360,11 +377,12 @@ class _DistributionHistoryPageState extends State<DistributionHistoryPage> {
   }
 }
 
-class _DistributionRecordCard extends StatelessWidget {
+class DistributionRecordCard extends StatelessWidget {
   final DistributionRecord record;
   final String formattedDate;
 
-  const _DistributionRecordCard({
+  const DistributionRecordCard({
+    super.key,
     required this.record,
     required this.formattedDate,
   });
@@ -411,7 +429,7 @@ class _DistributionRecordCard extends StatelessWidget {
                         const SizedBox(width: 4),
                         Flexible(
                           child: Text(
-                            record.siteName,
+                            'Destination: ${record.siteName}',
                             style: AppTypography.bodyMedium,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -463,7 +481,7 @@ class _DistributionRecordCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    record.volunteerName,
+                    'Volunteer: ${record.volunteerName}',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
