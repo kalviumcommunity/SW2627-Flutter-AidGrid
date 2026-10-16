@@ -16,6 +16,7 @@ class _RecordDistributionPageState extends State<RecordDistributionPage> {
   String? _selectedVolunteerId;
   final TextEditingController _quantityController = TextEditingController();
   bool _isSubmitting = false;
+  String? _selectedAssignmentId;
 
   Future<void> _submitDistribution() async {
     if (_selectedSiteId == null ||
@@ -52,6 +53,7 @@ class _RecordDistributionPageState extends State<RecordDistributionPage> {
         siteId: _selectedSiteId!,
         quantity: quantity,
         volunteerId: _selectedVolunteerId!,
+        assignmentId: _selectedAssignmentId,
       );
 
       if (!mounted) return;
@@ -178,6 +180,7 @@ class _RecordDistributionPageState extends State<RecordDistributionPage> {
                       onChanged: (value) {
                         setState(() {
                           _selectedVolunteerId = value;
+                          _selectedAssignmentId = null;
                         });
                       },
                     );
@@ -235,6 +238,75 @@ class _RecordDistributionPageState extends State<RecordDistributionPage> {
                     );
                   },
                 ),
+
+                const SizedBox(height: 16),
+
+                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: _selectedVolunteerId == null
+                      ? null
+                      : FirebaseFirestore.instance
+                            .collection('Assignments')
+                            .where(
+                              'volunteerId',
+                              isEqualTo: _selectedVolunteerId,
+                            )
+                            .where(
+                              'status',
+                              whereIn: ['Pending', 'In Progress'],
+                            )
+                            .snapshots(),
+                  builder: (context, assignmentSnapshot) {
+                    if (_selectedVolunteerId == null) {
+                      return const Text(
+                        'Select a volunteer to view their assignments.',
+                      );
+                    }
+
+                    if (assignmentSnapshot.hasError) {
+                      return const Text(
+                        'Could not load assignments. Check your connection.',
+                      );
+                    }
+
+                    if (assignmentSnapshot.connectionState ==
+                        ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final assignments = assignmentSnapshot.data?.docs ?? [];
+
+                    return DropdownButtonFormField<String>(
+                      initialValue: _selectedAssignmentId,
+                      decoration: const InputDecoration(
+                        labelText: 'Link an assignment (optional)',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: null,
+                          child: Text('No assignment'),
+                        ),
+                        ...assignments.map((doc) {
+                          final data = doc.data();
+                          final description =
+                              data['taskDescription'] as String? ??
+                              'Unnamed assignment';
+
+                          return DropdownMenuItem<String>(
+                            value: doc.id,
+                            child: Text(description),
+                          );
+                        }),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedAssignmentId = value;
+                        });
+                      },
+                    );
+                  },
+                ),
+
                 const SizedBox(height: 16),
 
                 TextField(
@@ -246,6 +318,7 @@ class _RecordDistributionPageState extends State<RecordDistributionPage> {
                     border: OutlineInputBorder(),
                   ),
                 ),
+
                 const SizedBox(height: 24),
 
                 ElevatedButton(
