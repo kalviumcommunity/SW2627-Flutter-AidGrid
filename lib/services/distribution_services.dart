@@ -30,12 +30,18 @@ class DistributionService {
     final siteRef = _firestore.collection('Sites').doc(siteId);
     final distributionRef = _firestore.collection('Distributions').doc();
     final volunteerRef = _firestore.collection('users').doc(volunteerId);
+    final assignmentRef = assignmentId == null
+        ? null
+        : _firestore.collection('Assignments').doc(assignmentId);
 
     await _firestore.runTransaction((transaction) async {
       // Read both documents before making any writes.
       final itemSnapshot = await transaction.get(itemRef);
       final siteSnapshot = await transaction.get(siteRef);
       final volunteerSnapshot = await transaction.get(volunteerRef);
+      final assignmentSnapshot = assignmentRef == null
+          ? null
+          : await transaction.get(assignmentRef);
 
       if (!itemSnapshot.exists) {
         throw StateError('The selected inventory item no longer exists.');
@@ -53,6 +59,34 @@ class DistributionService {
 
       if (volunteerData['role'] != 'VOLUNTEER') {
         throw StateError('The selected user is not a volunteer.');
+      }
+
+      if (assignmentSnapshot != null) {
+        if (!assignmentSnapshot.exists) {
+          throw StateError('The selected assignment no longer exists.');
+        }
+
+        final assignmentData = assignmentSnapshot.data()!;
+
+        if (assignmentData['volunteerId'] != volunteerId) {
+          throw StateError(
+            'The selected assignment does not belong to this volunteer.',
+          );
+        }
+
+        if (assignmentData['siteId'] != siteId) {
+          throw StateError(
+            'The selected assignment belongs to a different site.',
+          );
+        }
+
+        final status = assignmentData['status'];
+
+        if (status != 'Pending' && status != 'In Progress') {
+          throw StateError(
+            'The selected assignment is no longer eligible for distribution.',
+          );
+        }
       }
 
       final itemData = itemSnapshot.data()!;
