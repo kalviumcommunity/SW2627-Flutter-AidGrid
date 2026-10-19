@@ -456,7 +456,11 @@ class DistributionRecordCard extends StatelessWidget {
               record.assignmentId!.isNotEmpty) ...[
             const SizedBox(height: 8),
             SoberBadge(
-              label: 'Assignment: ${record.assignmentId}',
+              label:
+                  record.assignmentDescription != null &&
+                      record.assignmentDescription!.isNotEmpty
+                  ? 'Assignment: ${record.assignmentDescription}'
+                  : 'Assignment linked',
               backgroundColor: AppColors.secondaryContainer,
               textColor: AppColors.textSecondary,
               icon: Icons.assignment_outlined,

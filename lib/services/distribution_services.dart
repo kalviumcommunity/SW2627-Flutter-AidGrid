@@ -36,6 +36,7 @@ class DistributionService {
 
     await _firestore.runTransaction((transaction) async {
       // Read both documents before making any writes.
+      String? assignmentDescription;
       final itemSnapshot = await transaction.get(itemRef);
       final siteSnapshot = await transaction.get(siteRef);
       final volunteerSnapshot = await transaction.get(volunteerRef);
@@ -67,6 +68,7 @@ class DistributionService {
         }
 
         final assignmentData = assignmentSnapshot.data()!;
+        assignmentDescription = assignmentData['taskDescription'] as String?;
 
         if (assignmentData['volunteerId'] != volunteerId) {
           throw StateError(
@@ -126,6 +128,7 @@ class DistributionService {
             'Unknown',
         distributedAt: DateTime.now(),
         assignmentId: assignmentId,
+        assignmentDescription: assignmentDescription,
       );
 
       transaction.update(itemRef, {'quantity': availableStock - quantity});
