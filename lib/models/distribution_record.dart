@@ -26,6 +26,7 @@ class DistributionRecord {
   final String volunteerName;
   final DateTime distributedAt;
   final String? assignmentId;
+  final String? assignmentDescription;
 
   const DistributionRecord({
     required this.id,
@@ -39,6 +40,7 @@ class DistributionRecord {
     required this.volunteerName,
     required this.distributedAt,
     this.assignmentId,
+    this.assignmentDescription,
   });
 
   /// Factory constructor to parse a Firestore document snapshot.
@@ -85,6 +87,7 @@ class DistributionRecord {
       volunteerName: (data['volunteerName'] as String?)?.trim() ?? 'Volunteer',
       distributedAt: parsedDate,
       assignmentId: (data['assignmentId'] as String?)?.trim(),
+      assignmentDescription: (data['assignmentDescription'] as String?)?.trim(),
     );
   }
 
@@ -102,6 +105,8 @@ class DistributionRecord {
       'distributedAt': Timestamp.fromDate(distributedAt),
       if (assignmentId != null && assignmentId!.isNotEmpty)
         'assignmentId': assignmentId,
+      if (assignmentDescription != null && assignmentDescription!.isNotEmpty)
+        'assignmentDescription': assignmentDescription,
     };
   }
 
@@ -117,6 +122,7 @@ class DistributionRecord {
     String? volunteerName,
     DateTime? distributedAt,
     String? assignmentId,
+    String? assignmentDescription,
   }) {
     return DistributionRecord(
       id: id ?? this.id,
@@ -130,6 +136,7 @@ class DistributionRecord {
       volunteerName: volunteerName ?? this.volunteerName,
       distributedAt: distributedAt ?? this.distributedAt,
       assignmentId: assignmentId ?? this.assignmentId,
+      assignmentDescription: assignmentDescription ?? this.assignmentDescription,
     );
   }
 }
