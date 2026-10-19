@@ -50,6 +50,8 @@ class _EditSitePageState extends State<EditSitePage> {
   }
 
   Future<void> _saveChanges() async {
+    if (_isSaving) return;
+
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -133,6 +135,7 @@ class _EditSitePageState extends State<EditSitePage> {
                         // Site Name Field
                         TextFormField(
                           controller: _nameController,
+                          enabled: !_isSaving,
                           textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(
                             labelText: 'Site Name',
@@ -143,6 +146,9 @@ class _EditSitePageState extends State<EditSitePage> {
                             if (value == null || value.trim().isEmpty) {
                               return 'Please enter a site name';
                             }
+                            if (value.trim().length < 2) {
+                              return 'Site name must be at least 2 characters';
+                            }
                             return null;
                           },
                         ),
@@ -151,6 +157,7 @@ class _EditSitePageState extends State<EditSitePage> {
                         // Location Field
                         TextFormField(
                           controller: _locationController,
+                          enabled: !_isSaving,
                           textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(
                             labelText: 'Location',
@@ -161,6 +168,9 @@ class _EditSitePageState extends State<EditSitePage> {
                             if (value == null || value.trim().isEmpty) {
                               return 'Please enter a location';
                             }
+                            if (value.trim().length < 2) {
+                              return 'Location must be at least 2 characters';
+                            }
                             return null;
                           },
                         ),
@@ -169,6 +179,7 @@ class _EditSitePageState extends State<EditSitePage> {
                         // Beneficiaries Field
                         TextFormField(
                           controller: _beneficiariesController,
+                          enabled: !_isSaving,
                           keyboardType: TextInputType.number,
                           textInputAction: TextInputAction.done,
                           decoration: const InputDecoration(
@@ -181,8 +192,11 @@ class _EditSitePageState extends State<EditSitePage> {
                               return 'Please enter number of beneficiaries';
                             }
                             final parsed = int.tryParse(value.trim());
-                            if (parsed == null || parsed < 0) {
-                              return 'Please enter a valid positive number';
+                            if (parsed == null) {
+                              return 'Please enter a valid whole number';
+                            }
+                            if (parsed < 0) {
+                              return 'Beneficiaries cannot be negative';
                             }
                             return null;
                           },

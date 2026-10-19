@@ -639,7 +639,8 @@ class AdminDashboardPage extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const SitesPage(),
+                              builder: (context) =>
+                                  const SitesPage(isAdmin: true),
                             ),
                           );
                         },

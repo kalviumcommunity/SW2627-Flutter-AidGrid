@@ -14,48 +14,30 @@ import 'add_site_page.dart';
 /// SitesPage -> View Details -> SiteDetailsPage
 /// SitesPage -> Edit -> EditSitePage -> Save Changes -> Updated SitesPage
 class SitesPage extends StatefulWidget {
-  const SitesPage({super.key});
+  final bool isAdmin;
+  final Stream<List<Site>>? sitesStream;
+  final SitesService? sitesService;
+
+  const SitesPage({
+    super.key,
+    this.isAdmin = false,
+    this.sitesStream,
+    this.sitesService,
+  });
 
   @override
   State<SitesPage> createState() => _SitesPageState();
 }
 
 class _SitesPageState extends State<SitesPage> {
-  final SitesService _sitesService = SitesService();
-  bool _isSeeding = false;
+  SitesService? _sitesService;
+  int _retryKey = 0;
 
-  Future<void> _seedSampleSites() async {
-    setState(() {
-      _isSeeding = true;
-    });
+  SitesService get _effectiveSitesService =>
+      _sitesService ??= widget.sitesService ?? SitesService();
 
-    try {
-      await _sitesService.seedInitialSites();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Added sample sites (Jaipur North, Jaipur South, Ajmer Central)',
-          ),
-          backgroundColor: AppColors.primary,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to seed sites: $e'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSeeding = false;
-        });
-      }
-    }
-  }
+  Stream<List<Site>> get _stream =>
+      widget.sitesStream ?? _effectiveSitesService.getSitesStream();
 
   @override
   Widget build(BuildContext context) {
@@ -63,26 +45,183 @@ class _SitesPageState extends State<SitesPage> {
       appBar: AppBar(
         title: const Text('Sites & Communities'),
         actions: [
-          IconButton(
-            tooltip: 'Add Sites',
-            icon: const Icon(Icons.add_location_alt_outlined, size: 20),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const AddSitePage()),
-              );
-            },
-          ),
+          if (widget.isAdmin)
+            IconButton(
+              tooltip: 'Add Sites',
+              icon: const Icon(Icons.add_location_alt_outlined, size: 20),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AddSitePage(
+                      isAdmin: widget.isAdmin,
+                      sitesService: _sitesService,
+                    ),
+                  ),
+                );
+              },
+            ),
           const SizedBox(width: 8),
         ],
       ),
       body: SafeArea(
         child: StreamBuilder<List<Site>>(
-          stream: _sitesService.getSitesStream(),
-          initialData: const <Site>[],
+          key: ValueKey(_retryKey),
+          stream: _stream,
           builder: (context, snapshot) {
+            // 1. Loading state
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                !snapshot.hasData) {
+              return const Center(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.primary,
+                  ),
+                ),
+              );
+            }
+
+            // 2. Error state
+            if (snapshot.hasError) {
+              return Center(
+                child: ConstrainedContent(
+                  maxWidth: 520,
+                  padding: const EdgeInsets.all(24),
+                  child: SoberCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 28,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: AppColors.errorContainer,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.error_outline_rounded,
+                            color: AppColors.error,
+                            size: 26,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Unable to Load Distribution Sites',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${snapshot.error}',
+                          textAlign: TextAlign.center,
+                          style: AppTypography.bodyMedium,
+                        ),
+                        const SizedBox(height: 20),
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.refresh, size: 16),
+                          label: const Text('Retry'),
+                          onPressed: () {
+                            setState(() {
+                              _retryKey++;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+
             final sites = snapshot.data ?? <Site>[];
 
+            // 3. Empty state
+            if (sites.isEmpty) {
+              return Center(
+                child: ConstrainedContent(
+                  maxWidth: 440,
+                  padding: const EdgeInsets.all(24),
+                  child: SoberCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 36,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: AppColors.secondaryContainer,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.location_off_outlined,
+                            color: AppColors.primary,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'No Distribution Sites Found',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          widget.isAdmin
+                              ? 'No community distribution sites have been registered yet. Tap "Add Site" to register a new location.'
+                              : 'There are currently no community distribution sites registered in the network.',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                            height: 1.4,
+                          ),
+                        ),
+                        if (widget.isAdmin) ...[
+                          const SizedBox(height: 20),
+                          ElevatedButton.icon(
+                            icon: const Icon(
+                              Icons.add_location_alt_outlined,
+                              size: 16,
+                            ),
+                            label: const Text('Add Site'),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => AddSitePage(
+                                    isAdmin: widget.isAdmin,
+                                    sitesService: _sitesService,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            // 4. Populated site list
             return SingleChildScrollView(
               child: ConstrainedContent(
                 maxWidth: 760,
@@ -93,7 +232,7 @@ class _SitesPageState extends State<SitesPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (SitesService.isUsingFallback || snapshot.hasError) ...[
+                    if (SitesService.isUsingFallback) ...[
                       const NoticeBanner(
                         message: 'Demo / Fallback Mode: Cloud Firestore rules for "Sites" are pending in Firebase Console. Showing test sites (Jaipur North, Jaipur South, Ajmer Central). You can view details, edit, and save changes normally.',
                         isError: false,
@@ -124,25 +263,31 @@ class _SitesPageState extends State<SitesPage> {
                           const SizedBox(height: 12),
                       itemBuilder: (context, index) {
                         final site = sites[index];
-                        return _SiteItemCard(
+                        return SiteItemCard(
                           site: site,
+                          isAdmin: widget.isAdmin,
                           onViewDetails: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) =>
-                                    SiteDetailsPage(initialSite: site),
+                                builder: (context) => SiteDetailsPage(
+                                  initialSite: site,
+                                  isAdmin: widget.isAdmin,
+                                ),
                               ),
                             );
                           },
-                          onEdit: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => EditSitePage(site: site),
-                              ),
-                            );
-                          },
+                          onEdit: widget.isAdmin
+                              ? () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          EditSitePage(site: site),
+                                    ),
+                                  );
+                                }
+                              : null,
                         );
                       },
                     ),
@@ -162,16 +307,19 @@ class _SitesPageState extends State<SitesPage> {
 /// - Location
 /// - Number of beneficiaries
 /// - Active/inactive status
-/// - [ View Details ] and [ Edit ] buttons
-class _SiteItemCard extends StatelessWidget {
+/// - [ View Details ] and optionally [ Edit ] button for Admins
+class SiteItemCard extends StatelessWidget {
   final Site site;
+  final bool isAdmin;
   final VoidCallback onViewDetails;
-  final VoidCallback onEdit;
+  final VoidCallback? onEdit;
 
-  const _SiteItemCard({
+  const SiteItemCard({
+    super.key,
     required this.site,
+    this.isAdmin = false,
     required this.onViewDetails,
-    required this.onEdit,
+    this.onEdit,
   });
 
   @override
@@ -259,7 +407,7 @@ class _SiteItemCard extends StatelessWidget {
           const Divider(height: 1),
           const SizedBox(height: 14),
 
-          // Buttons: [ View Details ] [ Edit ]
+          // Buttons: [ View Details ] and conditionally [ Edit ]
           Row(
             children: [
               Expanded(
@@ -268,13 +416,15 @@ class _SiteItemCard extends StatelessWidget {
                   child: const Text('View Details'),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onEdit,
-                  child: const Text('Edit'),
+              if (isAdmin && onEdit != null) ...[
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: onEdit,
+                    child: const Text('Edit'),
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ],

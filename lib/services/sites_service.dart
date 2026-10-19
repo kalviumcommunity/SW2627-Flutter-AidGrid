@@ -13,13 +13,15 @@ import '../models/site.dart';
 ///   Ajmer Central) if cloud security rules have not yet been configured in the
 ///   Firebase Console, ensuring all user flows remain testable and interactive.
 class SitesService {
-  final FirebaseFirestore _firestore;
+  final FirebaseFirestore? firestore;
 
-  SitesService({FirebaseFirestore? firestore})
-    : _firestore = firestore ?? FirebaseFirestore.instance;
+  SitesService({this.firestore});
+
+  FirebaseFirestore get _effectiveFirestore =>
+      firestore ?? FirebaseFirestore.instance;
 
   CollectionReference<Map<String, dynamic>> get _sitesCollection =>
-      _firestore.collection('Sites');
+      _effectiveFirestore.collection('Sites');
 
   /// Default sample sites specified for the Sites / Communities module.
   static final List<Site> defaultSampleSites = [
@@ -178,6 +180,49 @@ class SitesService {
     return controller.stream;
   }
 
+  /// Creates a new community distribution site.
+  /// Validates beneficiary counts and writes to Firestore.
+  Future<String> addSite({
+    required String name,
+    required String location,
+    required int beneficiaries,
+    bool isActive = true,
+    String? siteId,
+  }) async {
+    if (beneficiaries < 0) {
+      throw ArgumentError('Beneficiaries cannot be negative.');
+    }
+
+    final id = siteId ?? _sitesCollection.doc().id;
+    final Map<String, dynamic> data = {
+      'name': name.trim(),
+      'location': location.trim(),
+      'beneficiaries': beneficiaries,
+      'isActive': isActive,
+    };
+
+    // 1. Save to Firestore first.
+    await _sitesCollection.doc(id).set(data);
+
+    // 2. Update local cache only after Firestore succeeds.
+    final newSite = Site(
+      id: id,
+      name: name.trim(),
+      location: location.trim(),
+      beneficiaries: beneficiaries,
+      isActive: isActive,
+    );
+
+    _localSites.removeWhere((site) => site.id == id);
+    _localSites.add(newSite);
+    _localSites.sort(
+      (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+    );
+
+    _localStreamController.add(List<Site>.from(_localSites));
+    return id;
+  }
+
   /// Updates an existing site document.
   /// Saves to local cache first so UI reflects instantly, then updates Firestore.
   Future<void> updateSite({
@@ -187,6 +232,10 @@ class SitesService {
     required int beneficiaries,
     bool? isActive,
   }) async {
+    if (beneficiaries < 0) {
+      throw ArgumentError('Beneficiaries cannot be negative.');
+    }
+
     final Map<String, dynamic> data = {
       'name': name.trim(),
       'location': location.trim(),
@@ -232,7 +281,7 @@ class SitesService {
     _localStreamController.add(List<Site>.from(_localSites));
 
     try {
-      final batch = _firestore.batch();
+      final batch = _effectiveFirestore.batch();
       for (final site in defaultSampleSites) {
         final docRef = _sitesCollection.doc(site.id);
         batch.set(docRef, site.toMap());
