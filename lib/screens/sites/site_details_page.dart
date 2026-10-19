@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../models/site.dart';
 import '../../services/sites_service.dart';
 import '../../theme/app_theme.dart';
@@ -13,12 +14,10 @@ import 'edit_site_page.dart';
 /// boundaries without altering other team members' inventory/distribution logic.
 class SiteDetailsPage extends StatelessWidget {
   final Site initialSite;
+  final bool isAdmin;
   final SitesService _sitesService = SitesService();
 
-  SiteDetailsPage({
-    super.key,
-    required this.initialSite,
-  });
+  SiteDetailsPage({super.key, required this.initialSite, this.isAdmin = false});
 
   @override
   Widget build(BuildContext context) {
@@ -32,18 +31,19 @@ class SiteDetailsPage extends StatelessWidget {
           appBar: AppBar(
             title: Text(site.name),
             actions: [
-              IconButton(
-                tooltip: 'Edit Site',
-                icon: const Icon(Icons.edit_outlined, size: 20),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => EditSitePage(site: site),
-                    ),
-                  );
-                },
-              ),
+              if (isAdmin)
+                IconButton(
+                  tooltip: 'Edit Site',
+                  icon: const Icon(Icons.edit_outlined, size: 20),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => EditSitePage(site: site),
+                      ),
+                    );
+                  },
+                ),
               const SizedBox(width: 8),
             ],
           ),
@@ -51,7 +51,10 @@ class SiteDetailsPage extends StatelessWidget {
             child: SingleChildScrollView(
               child: ConstrainedContent(
                 maxWidth: 720,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 24,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -139,18 +142,23 @@ class SiteDetailsPage extends StatelessWidget {
                                   ],
                                 ),
                               ),
-                              OutlinedButton.icon(
-                                icon: const Icon(Icons.edit_outlined, size: 16),
-                                label: const Text('Edit Details'),
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => EditSitePage(site: site),
-                                    ),
-                                  );
-                                },
-                              ),
+                              if (isAdmin)
+                                OutlinedButton.icon(
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 16,
+                                  ),
+                                  label: const Text('Edit Details'),
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            EditSitePage(site: site),
+                                      ),
+                                    );
+                                  },
+                                ),
                             ],
                           ),
                         ],
@@ -166,7 +174,10 @@ class SiteDetailsPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     SoberCard(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       child: Column(
                         children: const [
                           _VolunteerTile(
@@ -185,10 +196,7 @@ class SiteDetailsPage extends StatelessWidget {
                     const SizedBox(height: 24),
 
                     // Current Stock (Mock display data per module requirements)
-                    Text(
-                      'CURRENT STOCK',
-                      style: AppTypography.labelSmall,
-                    ),
+                    Text('CURRENT STOCK', style: AppTypography.labelSmall),
                     const SizedBox(height: 10),
                     const Row(
                       children: [
@@ -215,10 +223,7 @@ class SiteDetailsPage extends StatelessWidget {
                     const SizedBox(height: 24),
 
                     // Recent Activity (Mock display data per module requirements)
-                    Text(
-                      'RECENT ACTIVITY',
-                      style: AppTypography.labelSmall,
-                    ),
+                    Text('RECENT ACTIVITY', style: AppTypography.labelSmall),
                     const SizedBox(height: 10),
                     SoberCard(
                       padding: EdgeInsets.zero,
@@ -255,10 +260,7 @@ class _VolunteerTile extends StatelessWidget {
   final String name;
   final String role;
 
-  const _VolunteerTile({
-    required this.name,
-    required this.role,
-  });
+  const _VolunteerTile({required this.name, required this.role});
 
   @override
   Widget build(BuildContext context) {
@@ -350,10 +352,7 @@ class _ActivityItemTile extends StatelessWidget {
           ),
           Text(
             time,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textMuted,
-            ),
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
           ),
         ],
       ),
