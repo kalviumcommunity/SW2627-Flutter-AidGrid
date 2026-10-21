@@ -11,6 +11,7 @@ import 'screens/distribution/distribution_history_page.dart';
 import 'screens/sites/sites_page.dart';
 import 'theme/app_theme.dart';
 import 'theme/components.dart';
+import 'screens/profile/profile_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -555,6 +556,16 @@ class AdminDashboardPage extends StatelessWidget {
             icon: const Icon(Icons.logout_rounded),
           ),
           const SizedBox(width: 12),
+          IconButton(
+            tooltip: 'My Profile',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ProfilePage()),
+              );
+            },
+            icon: const Icon(Icons.person_outline),
+          ),
         ],
       ),
       body: SafeArea(
@@ -1326,6 +1337,16 @@ class DashboardPage extends StatelessWidget {
             icon: const Icon(Icons.logout_rounded, size: 20),
           ),
           const SizedBox(width: 12),
+          IconButton(
+            tooltip: 'My Profile',
+            icon: const Icon(Icons.person_outline),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ProfilePage()),
+              );
+            },
+          ),
         ],
       ),
       body: SafeArea(
