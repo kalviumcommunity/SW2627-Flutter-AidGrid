@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../models/assignment.dart';
 import '../../models/site.dart';
@@ -86,7 +87,12 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
   void _showCreateAssignmentDialog(List<Site> availableSites) {
     final formKey = GlobalKey<FormState>();
     final taskController = TextEditingController();
-    final volunteerIdController = TextEditingController();
+    String? selectedVolunteerId;
+    final volunteersFuture = FirebaseFirestore.instance
+        .collection('users')
+        .where('role', isEqualTo: 'VOLUNTEER')
+        .get();
+
     Site? selectedSite = availableSites.isNotEmpty
         ? availableSites.first
         : null;
@@ -140,20 +146,73 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                         const SizedBox(height: 14),
 
                         // Volunteer ID field
-                        TextFormField(
-                          controller: volunteerIdController,
-                          decoration: const InputDecoration(
-                            labelText: 'Volunteer UID',
-                            hintText: 'Enter volunteer user ID',
-                            prefixIcon: Icon(Icons.person_outline, size: 20),
-                          ),
-                          validator: (val) {
-                            if (val == null || val.trim().isEmpty) {
-                              return 'Please enter a volunteer UID';
+                        FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                          future: volunteersFuture,
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              );
                             }
-                            return null;
+
+                            if (snapshot.hasError) {
+                              return const Text('Unable to load volunteers.');
+                            }
+
+                            final volunteers = snapshot.data?.docs ?? [];
+
+                            if (volunteers.isEmpty) {
+                              return const Text(
+                                'No registered volunteers found.',
+                              );
+                            }
+
+                            return DropdownButtonFormField<String>(
+                              initialValue: selectedVolunteerId,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Select Volunteer',
+                                border: OutlineInputBorder(),
+                              ),
+                              items: volunteers.map((doc) {
+                                final data = doc.data();
+                                final name =
+                                    data['name'] as String? ??
+                                    'Unnamed volunteer';
+                                final email =
+                                    data['email'] as String? ?? 'No email';
+                                final uid = doc.id;
+                                final suffix = uid.length > 6
+                                    ? uid.substring(uid.length - 6)
+                                    : uid;
+
+                                return DropdownMenuItem<String>(
+                                  value: uid,
+                                  child: Text(
+                                    '$name • $email • …$suffix',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (value) {
+                                setDialogState(() {
+                                  selectedVolunteerId = value;
+                                });
+                              },
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please select a volunteer';
+                                }
+                                return null;
+                              },
+                            );
                           },
                         ),
+
                         const SizedBox(height: 14),
 
                         // Task Description
@@ -213,7 +272,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                             await _assignmentsService.createAssignment(
                               siteId: selectedSite?.id ?? '',
                               siteName: selectedSite?.name,
-                              volunteerId: volunteerIdController.text.trim(),
+                              volunteerId: selectedVolunteerId!,
                               taskDescription: taskController.text.trim(),
                               assignedAt: selectedDate,
                             );
@@ -923,5 +982,152 @@ class _AssignmentCard extends StatelessWidget {
       'Dec',
     ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
+}
+
+class VolunteerSearchDelegate extends SearchDelegate<String?> {
+  String? _lastQuery;
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>? _lastSearch;
+  int _requestId = 0;
+
+  @override
+  String get searchFieldLabel => 'Search name or email';
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _search(
+    String input,
+  ) async {
+    final searchText = input.trim();
+
+    if (searchText.isEmpty) return [];
+
+    // Wait briefly so we don't query Firestore for every keystroke.
+    final requestId = ++_requestId;
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    // Ignore searches that were superseded while waiting.
+    if (requestId != _requestId) return [];
+
+    final users = FirebaseFirestore.instance.collection('users');
+
+    final results = await Future.wait([
+      users
+          .where('role', isEqualTo: 'VOLUNTEER')
+          .orderBy('name')
+          .startAt([searchText])
+          .endAt(['$searchText\uf8ff'])
+          .limit(20)
+          .get(),
+      users
+          .where('role', isEqualTo: 'VOLUNTEER')
+          .orderBy('email')
+          .startAt([searchText])
+          .endAt(['$searchText\uf8ff'])
+          .limit(20)
+          .get(),
+    ]);
+
+    if (requestId != _requestId) return [];
+
+    final unique = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+
+    for (final result in results) {
+      for (final doc in result.docs) {
+        unique[doc.id] = doc;
+      }
+    }
+
+    return unique.values.toList();
+  }
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _resultsFor(
+    String input,
+  ) {
+    if (_lastQuery != input || _lastSearch == null) {
+      _lastQuery = input;
+      _lastSearch = _search(input);
+    }
+
+    return _lastSearch!;
+  }
+
+  @override
+  List<Widget> buildActions(BuildContext context) {
+    return [
+      if (query.isNotEmpty)
+        IconButton(
+          icon: const Icon(Icons.clear),
+          tooltip: 'Clear search',
+          onPressed: () {
+            query = '';
+            _lastQuery = null;
+            _lastSearch = null;
+          },
+        ),
+    ];
+  }
+
+  @override
+  Widget buildLeading(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.arrow_back),
+      tooltip: 'Back',
+      onPressed: () => close(context, null),
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) {
+    return _buildResults(context);
+  }
+
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    return _buildResults(context);
+  }
+
+  Widget _buildResults(BuildContext context) {
+    if (query.trim().isEmpty) {
+      return const Center(
+        child: Text('Enter a name or email to search volunteers.'),
+      );
+    }
+
+    return FutureBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+      future: _resultsFor(query),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return const Center(
+            child: Text('Unable to search volunteers. Please try again.'),
+          );
+        }
+
+        final volunteers = snapshot.data ?? [];
+
+        if (volunteers.isEmpty) {
+          return const Center(child: Text('No matching volunteers found.'));
+        }
+
+        return ListView.builder(
+          itemCount: volunteers.length,
+          itemBuilder: (context, index) {
+            final doc = volunteers[index];
+            final data = doc.data();
+            final name = data['name'] as String? ?? 'Unnamed volunteer';
+            final email = data['email'] as String? ?? 'No email';
+
+            return ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.person_outline)),
+              title: Text(name),
+              subtitle: Text(email),
+              onTap: () => close(context, doc.id),
+            );
+          },
+        );
+      },
+    );
   }
 }
