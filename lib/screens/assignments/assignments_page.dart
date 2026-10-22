@@ -88,10 +88,6 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
     final formKey = GlobalKey<FormState>();
     final taskController = TextEditingController();
     String? selectedVolunteerId;
-    final volunteersFuture = FirebaseFirestore.instance
-        .collection('users')
-        .where('role', isEqualTo: 'VOLUNTEER')
-        .get();
 
     Site? selectedSite = availableSites.isNotEmpty
         ? availableSites.first
@@ -146,74 +142,27 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                         const SizedBox(height: 14),
 
                         // Volunteer ID field
-                        FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                          future: volunteersFuture,
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState ==
-                                ConnectionState.waiting) {
-                              return const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 16),
-                                child: Center(
-                                  child: CircularProgressIndicator(),
-                                ),
-                              );
-                            }
-
-                            if (snapshot.hasError) {
-                              return const Text('Unable to load volunteers.');
-                            }
-
-                            final volunteers = snapshot.data?.docs ?? [];
-
-                            if (volunteers.isEmpty) {
-                              return const Text(
-                                'No registered volunteers found.',
-                              );
-                            }
-
-                            return DropdownButtonFormField<String>(
-                              initialValue: selectedVolunteerId,
-                              isExpanded: true,
-                              decoration: const InputDecoration(
-                                labelText: 'Select Volunteer',
-                                border: OutlineInputBorder(),
-                              ),
-                              items: volunteers.map((doc) {
-                                final data = doc.data();
-                                final name =
-                                    data['name'] as String? ??
-                                    'Unnamed volunteer';
-                                final email =
-                                    data['email'] as String? ?? 'No email';
-                                final uid = doc.id;
-                                final suffix = uid.length > 6
-                                    ? uid.substring(uid.length - 6)
-                                    : uid;
-
-                                return DropdownMenuItem<String>(
-                                  value: uid,
-                                  child: Text(
-                                    '$name • $email • …$suffix',
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: (value) {
-                                setDialogState(() {
-                                  selectedVolunteerId = value;
-                                });
-                              },
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please select a volunteer';
-                                }
-                                return null;
-                              },
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.search),
+                          label: Text(
+                            selectedVolunteerId == null
+                                ? 'Search and select volunteer'
+                                : 'Volunteer selected • '
+                                      '${selectedVolunteerId!.substring(selectedVolunteerId!.length > 6 ? selectedVolunteerId!.length - 6 : 0)}',
+                          ),
+                          onPressed: () async {
+                            final volunteerId = await showSearch<String?>(
+                              context: context,
+                              delegate: VolunteerSearchDelegate(),
                             );
+
+                            if (volunteerId != null && context.mounted) {
+                              setDialogState(() {
+                                selectedVolunteerId = volunteerId;
+                              });
+                            }
                           },
                         ),
-
-                        const SizedBox(height: 14),
 
                         // Task Description
                         TextFormField(
@@ -264,6 +213,16 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                       ? null
                       : () async {
                           if (!formKey.currentState!.validate()) return;
+
+                          if (selectedVolunteerId == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please select a volunteer'),
+                              ),
+                            );
+                            return;
+                          }
+
                           setDialogState(() {
                             isSubmitting = true;
                           });
@@ -290,10 +249,12 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                               ),
                             );
                           } catch (e) {
+                            if (!dialogContext.mounted) return;
+
                             setDialogState(() {
                               isSubmitting = false;
                             });
-                            if (!dialogContext.mounted) return;
+
                             ScaffoldMessenger.of(dialogContext).showSnackBar(
                               SnackBar(
                                 content: Text('Error creating assignment: $e'),
