@@ -201,78 +201,93 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                   ),
                 ),
               ),
+
               actions: [
-                TextButton(
-                  onPressed: isSubmitting
-                      ? null
-                      : () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSubmitting
-                      ? null
-                      : () async {
-                          if (!formKey.currentState!.validate()) return;
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: isSubmitting
+                            ? null
+                            : () => Navigator.pop(dialogContext),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: isSubmitting
+                            ? null
+                            : () async {
+                                if (!formKey.currentState!.validate()) return;
 
-                          if (selectedVolunteerId == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Please select a volunteer'),
-                              ),
-                            );
-                            return;
-                          }
+                                if (selectedVolunteerId == null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Please select a volunteer',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
 
-                          setDialogState(() {
-                            isSubmitting = true;
-                          });
+                                setDialogState(() {
+                                  isSubmitting = true;
+                                });
 
-                          try {
-                            await _assignmentsService.createAssignment(
-                              siteId: selectedSite?.id ?? '',
-                              siteName: selectedSite?.name,
-                              volunteerId: selectedVolunteerId!,
-                              taskDescription: taskController.text.trim(),
-                              assignedAt: selectedDate,
-                            );
+                                try {
+                                  await _assignmentsService.createAssignment(
+                                    siteId: selectedSite?.id ?? '',
+                                    siteName: selectedSite?.name,
+                                    volunteerId: selectedVolunteerId!,
+                                    taskDescription: taskController.text.trim(),
+                                    assignedAt: selectedDate,
+                                  );
 
-                            if (!dialogContext.mounted) return;
-                            Navigator.pop(dialogContext);
+                                  if (!dialogContext.mounted) return;
+                                  Navigator.pop(dialogContext);
 
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Assignment created successfully',
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Assignment created successfully',
+                                      ),
+                                      backgroundColor: AppColors.primary,
+                                    ),
+                                  );
+                                } catch (e) {
+                                  if (!dialogContext.mounted) return;
+
+                                  setDialogState(() {
+                                    isSubmitting = false;
+                                  });
+
+                                  ScaffoldMessenger.of(dialogContext)
+                                      .showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Error creating assignment: $e',
+                                          ),
+                                          backgroundColor: AppColors.error,
+                                        ),
+                                      );
+                                }
+                              },
+                        child: isSubmitting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
                                 ),
-                                backgroundColor: AppColors.primary,
-                              ),
-                            );
-                          } catch (e) {
-                            if (!dialogContext.mounted) return;
-
-                            setDialogState(() {
-                              isSubmitting = false;
-                            });
-
-                            ScaffoldMessenger.of(dialogContext).showSnackBar(
-                              SnackBar(
-                                content: Text('Error creating assignment: $e'),
-                                backgroundColor: AppColors.error,
-                              ),
-                            );
-                          }
-                        },
-                  child: isSubmitting
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('Create'),
+                              )
+                            : const Text('Create'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             );
@@ -595,7 +610,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                                       color: AppColors.textSecondary,
                                     ),
                                   ),
-                                  const SizedBox(height: 14),
+                                  const SizedBox(height: 22),
                                   TextButton(
                                     onPressed: () {
                                       setState(() {
@@ -1061,8 +1076,14 @@ class VolunteerSearchDelegate extends SearchDelegate<String?> {
         }
 
         if (snapshot.hasError) {
-          return const Center(
-            child: Text('Unable to search volunteers. Please try again.'),
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: SelectableText(
+                'Search error: ${snapshot.error}',
+                textAlign: TextAlign.center,
+              ),
+            ),
           );
         }
 
