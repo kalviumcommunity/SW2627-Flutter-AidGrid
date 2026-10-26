@@ -46,7 +46,7 @@ void main() {
 
       expect(assignment.id, equals('doc_assignment_1'));
       expect(assignment.siteId, equals('site_jaipur_01'));
-      expect(assignment.volunteerId, equals('user_vol_123'));
+      expect(assignment.volunteerIds, equals(['user_vol_123']));
       expect(
         assignment.taskDescription,
         equals('Distribute 50 kg grain packs'),
@@ -62,7 +62,7 @@ void main() {
 
       expect(assignment.id, equals('doc_empty'));
       expect(assignment.siteId, equals(''));
-      expect(assignment.volunteerId, equals(''));
+      expect(assignment.volunteerIds, isEmpty);
       expect(assignment.taskDescription, equals('No description provided'));
       expect(assignment.status, equals(AssignmentStatus.pending));
       expect(assignment.siteName, isNull);
@@ -73,7 +73,7 @@ void main() {
       final assignment = Assignment(
         id: 'doc_2',
         siteId: 'site_ajmer_02',
-        volunteerId: 'user_456',
+        volunteerIds: ['user_456', 'user_789'],
         taskDescription: 'Coordinate delivery truck',
         assignedAt: testDate,
         status: AssignmentStatus.inProgress,
@@ -83,7 +83,7 @@ void main() {
       final map = assignment.toMap();
 
       expect(map['siteId'], equals('site_ajmer_02'));
-      expect(map['volunteerId'], equals('user_456'));
+      expect(map['volunteerIds'], equals(['user_456', 'user_789']));
       expect(map['taskDescription'], equals('Coordinate delivery truck'));
       expect(map['status'], equals('In Progress'));
       expect(map['siteName'], equals('Ajmer Central'));
@@ -94,7 +94,7 @@ void main() {
       final assignment = Assignment(
         id: 'doc_3',
         siteId: 'site_1',
-        volunteerId: 'user_1',
+        volunteerIds: ['user_1'],
         taskDescription: 'Deliver rations',
         assignedAt: DateTime.now(),
         status: AssignmentStatus.pending,
@@ -103,11 +103,13 @@ void main() {
       final updated = assignment.copyWith(
         status: AssignmentStatus.completed,
         siteName: 'Jaipur South',
+        volunteerIds: ['user_1', 'user_2'],
       );
 
       expect(updated.status, equals(AssignmentStatus.completed));
       expect(updated.siteName, equals('Jaipur South'));
       expect(updated.taskDescription, equals('Deliver rations'));
+      expect(updated.volunteerIds, equals(['user_1', 'user_2']));
     });
   });
 }

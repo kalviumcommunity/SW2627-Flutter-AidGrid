@@ -247,8 +247,8 @@ class _RecordDistributionPageState extends State<RecordDistributionPage> {
                       : FirebaseFirestore.instance
                             .collection('Assignments')
                             .where(
-                              'volunteerId',
-                              isEqualTo: _selectedVolunteerId,
+                              'volunteerIds',
+                              arrayContains: _selectedVolunteerId,
                             )
                             .where(
                               'status',

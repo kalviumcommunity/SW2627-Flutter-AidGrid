@@ -35,7 +35,7 @@ class AssignmentsService {
       Assignment(
         id: 'assign-sample-1',
         siteId: 'jaipur-north',
-        volunteerId: vId,
+        volunteerIds: [vId],
         taskDescription: 'Distribute 50 kg grain packs to Zone A shelters',
         assignedAt: now.subtract(const Duration(hours: 2)),
         status: AssignmentStatus.pending,
@@ -44,7 +44,7 @@ class AssignmentsService {
       Assignment(
         id: 'assign-sample-2',
         siteId: 'jaipur-south',
-        volunteerId: vId,
+        volunteerIds: [vId],
         taskDescription: 'Coordinate delivery truck and verify inventory distribution counts',
         assignedAt: now.subtract(const Duration(hours: 5)),
         status: AssignmentStatus.inProgress,
@@ -53,7 +53,7 @@ class AssignmentsService {
       Assignment(
         id: 'assign-sample-3',
         siteId: 'ajmer-central',
-        volunteerId: vId,
+        volunteerIds: [vId],
         taskDescription:
             'Handover emergency medical supplies and dry ration kits',
         assignedAt: now.subtract(const Duration(days: 1)),
@@ -85,8 +85,8 @@ class AssignmentsService {
     final filtered = list
         .where(
           (a) =>
-              a.volunteerId == volunteerId ||
-              a.volunteerId == 'vol_demo' ||
+              a.volunteerIds.contains(volunteerId) ||
+              a.volunteerIds.contains('vol_demo') ||
               a.id.startsWith('assign-sample-'),
         )
         .toList();
@@ -98,63 +98,94 @@ class AssignmentsService {
   ///
   /// This query is explicitly structured with `.where('volunteerId', isEqualTo: volunteerId)`
   /// to ensure full compatibility with narrowly-scoped Firestore security rules.
+
   Stream<List<Assignment>> getVolunteerAssignmentsStream(String volunteerId) {
     _ensureInitialized(volunteerId: volunteerId);
 
     late StreamController<List<Assignment>> controller;
-    StreamSubscription? firestoreSub;
+    StreamSubscription? legacySub;
+    StreamSubscription? multiSub;
     StreamSubscription? localSub;
+
+    List<Assignment> legacyAssignments = [];
+    List<Assignment> multiAssignments = [];
+
+    void emitMergedAssignments() {
+      if (controller.isClosed) return;
+
+      final merged = <String, Assignment>{};
+
+      for (final assignment in legacyAssignments) {
+        merged[assignment.id] = assignment;
+      }
+
+      for (final assignment in multiAssignments) {
+        merged[assignment.id] = assignment;
+      }
+
+      final assignments =
+          merged.values
+              .where((a) => a.volunteerIds.contains(volunteerId))
+              .toList()
+            ..sort((a, b) => b.assignedAt.compareTo(a.assignedAt));
+
+      // Update only this volunteer's cached assignments.
+      _localAssignments.removeWhere(
+        (a) =>
+            a.volunteerIds.contains(volunteerId) ||
+            a.id.startsWith('assign-sample-'),
+      );
+      _localAssignments.addAll(assignments);
+
+      isUsingFallback = false;
+      lastFirestoreError = null;
+      controller.add(assignments);
+    }
+
+    void handleStreamError(Object error) {
+      isUsingFallback = true;
+      lastFirestoreError = error.toString();
+
+      if (!controller.isClosed) {
+        controller.add(_filterByVolunteer(_localAssignments, volunteerId));
+      }
+    }
 
     controller = StreamController<List<Assignment>>(
       onListen: () {
-        // Immediately emit local cache so the UI never hangs on loading
+        // Emit local data immediately while Firestore connects.
         controller.add(_filterByVolunteer(_localAssignments, volunteerId));
 
-        // Connect to Firestore
-        firestoreSub = _assignmentsCollection
+        legacySub = _assignmentsCollection
             .where('volunteerId', isEqualTo: volunteerId)
             .snapshots()
-            .listen(
-              (snapshot) {
-                isUsingFallback = false;
-                lastFirestoreError = null;
-                final remoteAssignments = snapshot.docs
-                    .map((doc) => Assignment.fromFirestore(doc))
-                    .toList();
-                remoteAssignments.sort(
-                  (a, b) => b.assignedAt.compareTo(a.assignedAt),
-                );
+            .listen((snapshot) {
+              legacyAssignments = snapshot.docs
+                  .map((doc) => Assignment.fromFirestore(doc))
+                  .toList();
+              emitMergedAssignments();
+            }, onError: handleStreamError);
 
-                // Update local cache
-                _localAssignments
-                  ..removeWhere((a) => a.volunteerId == volunteerId)
-                  ..addAll(remoteAssignments);
+        multiSub = _assignmentsCollection
+            .where('volunteerIds', arrayContains: volunteerId)
+            .snapshots()
+            .listen((snapshot) {
+              multiAssignments = snapshot.docs
+                  .map((doc) => Assignment.fromFirestore(doc))
+                  .toList();
+              emitMergedAssignments();
+            }, onError: handleStreamError);
 
-                if (!controller.isClosed) {
-                  controller.add(remoteAssignments);
-                }
-              },
-              onError: (error) {
-                isUsingFallback = true;
-                lastFirestoreError = error.toString();
-                if (!controller.isClosed) {
-                  controller.add(
-                    _filterByVolunteer(_localAssignments, volunteerId),
-                  );
-                }
-              },
-            );
-
-        // Listen for local mutations (e.g. status updates)
         localSub = _localStreamController.stream.listen((all) {
           if (!controller.isClosed) {
             controller.add(_filterByVolunteer(all, volunteerId));
           }
         });
       },
-      onCancel: () {
-        firestoreSub?.cancel();
-        localSub?.cancel();
+      onCancel: () async {
+        await legacySub?.cancel();
+        await multiSub?.cancel();
+        await localSub?.cancel();
       },
     );
 
@@ -227,46 +258,67 @@ class AssignmentsService {
   /// Enforces client-side authorization check: a volunteer can only update
   /// their own assignment, while admins can manage any assignment.
   /// Returns `true` if persisted to Firestore, `false` if saved to local fallback cache.
+
   Future<bool> updateAssignmentStatus({
     required String assignmentId,
     required AssignmentStatus newStatus,
     required String currentUserId,
     bool isAdmin = false,
-    String? assignedVolunteerId,
   }) async {
-    // Client-side guard: Prevent volunteers from updating assignments belonging to someone else
-    if (!isAdmin &&
-        assignedVolunteerId != null &&
-        assignedVolunteerId.isNotEmpty &&
-        currentUserId.isNotEmpty &&
-        assignedVolunteerId != currentUserId &&
-        !assignmentId.startsWith('assign-sample-')) {
-      throw FirebaseException(
-        plugin: 'cloud_firestore',
-        code: 'permission-denied',
-        message:
-            'Volunteers are only permitted to update their own assignments.',
-      );
-    }
-
     bool persisted = false;
+
     try {
-      await _assignmentsCollection.doc(assignmentId).update({
-        'status': newStatus.label,
-      });
+      final docRef = _assignmentsCollection.doc(assignmentId);
+      final snapshot = await docRef.get();
+
+      if (!snapshot.exists) {
+        throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'not-found',
+          message: 'Assignment not found.',
+        );
+      }
+
+      final data = snapshot.data() ?? <String, dynamic>{};
+
+      // Read both the new and legacy assignment formats.
+      final rawVolunteerIds = data['volunteerIds'];
+      final assignedIds = rawVolunteerIds is List
+          ? rawVolunteerIds.whereType<String>().toList()
+          : [if (data['volunteerId'] is String) data['volunteerId'] as String];
+
+      // Verify authorization against the assignment stored in Firestore.
+      if (!isAdmin &&
+          (currentUserId.isEmpty || !assignedIds.contains(currentUserId)) &&
+          !assignmentId.startsWith('assign-sample-')) {
+        throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'permission-denied',
+          message: 'Volunteers can only update assignments assigned to them.',
+        );
+      }
+
+      await docRef.update({'status': newStatus.label});
+
       persisted = true;
+      isUsingFallback = false;
+      lastFirestoreError = null;
+    } on FirebaseException {
+      rethrow;
     } catch (e) {
       isUsingFallback = true;
       lastFirestoreError = e.toString();
     }
 
-    // Update in-memory cache so status transitions reflect in the UI immediately
-    final index = _localAssignments.indexWhere((a) => a.id == assignmentId);
-    if (index != -1) {
-      _localAssignments[index] = _localAssignments[index].copyWith(
-        status: newStatus,
-      );
-      _localStreamController.add(List<Assignment>.from(_localAssignments));
+    // Update the local cache after a successful persisted update.
+    if (persisted) {
+      final index = _localAssignments.indexWhere((a) => a.id == assignmentId);
+      if (index != -1) {
+        _localAssignments[index] = _localAssignments[index].copyWith(
+          status: newStatus,
+        );
+        _localStreamController.add(List<Assignment>.from(_localAssignments));
+      }
     }
 
     return persisted;
@@ -276,7 +328,7 @@ class AssignmentsService {
 
   Future<String> createAssignment({
     required String siteId,
-    required String volunteerId,
+    required List<String> volunteerIds,
     required String taskDescription,
     DateTime? assignedAt,
     String? siteName,
@@ -284,7 +336,11 @@ class AssignmentsService {
     final assignment = Assignment(
       id: 'temporary',
       siteId: siteId.trim(),
-      volunteerId: volunteerId.trim(),
+      volunteerIds: volunteerIds
+          .map((id) => id.trim())
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(),
       taskDescription: taskDescription.trim(),
       assignedAt: assignedAt ?? DateTime.now(),
       status: AssignmentStatus.pending,

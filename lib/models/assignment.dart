@@ -37,7 +37,7 @@ enum AssignmentStatus {
 class Assignment {
   final String id;
   final String siteId;
-  final String volunteerId;
+  final List<String> volunteerIds;
   final String taskDescription;
   final DateTime assignedAt;
   final AssignmentStatus status;
@@ -46,7 +46,7 @@ class Assignment {
   const Assignment({
     required this.id,
     required this.siteId,
-    required this.volunteerId,
+    required this.volunteerIds,
     required this.taskDescription,
     required this.assignedAt,
     required this.status,
@@ -73,10 +73,26 @@ class Assignment {
       parsedDate = DateTime.now();
     }
 
+    final rawVolunteerIds = data['volunteerIds'];
+    final List<String> parsedVolunteerIds;
+
+    if (rawVolunteerIds is List) {
+      parsedVolunteerIds = rawVolunteerIds
+          .whereType<String>()
+          .map((id) => id.trim())
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList();
+    } else {
+      final legacyVolunteerId = (data['volunteerId'] as String?)?.trim() ?? '';
+
+      parsedVolunteerIds = legacyVolunteerId.isEmpty ? [] : [legacyVolunteerId];
+    }
+
     return Assignment(
       id: id,
       siteId: (data['siteId'] as String?)?.trim() ?? '',
-      volunteerId: (data['volunteerId'] as String?)?.trim() ?? '',
+      volunteerIds: parsedVolunteerIds,
       taskDescription:
           (data['taskDescription'] as String?)?.trim() ??
           'No description provided',
@@ -90,7 +106,7 @@ class Assignment {
   Map<String, dynamic> toMap() {
     return {
       'siteId': siteId,
-      'volunteerId': volunteerId,
+      'volunteerIds': volunteerIds,
       'taskDescription': taskDescription,
       'assignedAt': Timestamp.fromDate(assignedAt),
       'status': status.label,
@@ -101,7 +117,7 @@ class Assignment {
   Assignment copyWith({
     String? id,
     String? siteId,
-    String? volunteerId,
+    List<String>? volunteerIds,
     String? taskDescription,
     DateTime? assignedAt,
     AssignmentStatus? status,
@@ -110,7 +126,7 @@ class Assignment {
     return Assignment(
       id: id ?? this.id,
       siteId: siteId ?? this.siteId,
-      volunteerId: volunteerId ?? this.volunteerId,
+      volunteerIds: volunteerIds ?? this.volunteerIds,
       taskDescription: taskDescription ?? this.taskDescription,
       assignedAt: assignedAt ?? this.assignedAt,
       status: status ?? this.status,
