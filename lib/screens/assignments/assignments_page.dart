@@ -49,7 +49,6 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
         newStatus: newStatus,
         currentUserId: _currentUserId,
         isAdmin: widget.isAdmin,
-        assignedVolunteerId: assignment.volunteerId,
       );
 
       if (!mounted) return;
@@ -87,7 +86,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
   void _showCreateAssignmentDialog(List<Site> availableSites) {
     final formKey = GlobalKey<FormState>();
     final taskController = TextEditingController();
-    String? selectedVolunteerId;
+    final Set<String> selectedVolunteerIds = {};
 
     Site? selectedSite = availableSites.isNotEmpty
         ? availableSites.first
@@ -141,14 +140,13 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                         ),
                         const SizedBox(height: 14),
 
-                        // Volunteer ID field
+                        // Volunteer multi-select
                         OutlinedButton.icon(
                           icon: const Icon(Icons.search),
                           label: Text(
-                            selectedVolunteerId == null
-                                ? 'Search and select volunteer'
-                                : 'Volunteer selected • '
-                                      '${selectedVolunteerId!.substring(selectedVolunteerId!.length > 6 ? selectedVolunteerId!.length - 6 : 0)}',
+                            selectedVolunteerIds.isEmpty
+                                ? 'Search and select volunteers'
+                                : 'Selected volunteers: ${selectedVolunteerIds.length}',
                           ),
                           onPressed: () async {
                             final volunteerId = await showSearch<String?>(
@@ -158,11 +156,54 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
 
                             if (volunteerId != null && context.mounted) {
                               setDialogState(() {
-                                selectedVolunteerId = volunteerId;
+                                selectedVolunteerIds.add(volunteerId);
                               });
                             }
                           },
                         ),
+
+                        if (selectedVolunteerIds.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          ...selectedVolunteerIds.map((volunteerId) {
+                            return FutureBuilder<
+                              DocumentSnapshot<Map<String, dynamic>>
+                            >(
+                              future: FirebaseFirestore.instance
+                                  .collection('users')
+                                  .doc(volunteerId)
+                                  .get(),
+                              builder: (context, snapshot) {
+                                final data = snapshot.data?.data();
+                                final name =
+                                    data?['name'] as String? ?? 'Volunteer';
+                                final email = data?['email'] as String? ?? '';
+
+                                return ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: const CircleAvatar(
+                                    child: Icon(Icons.person_outline),
+                                  ),
+                                  title: Text(name),
+                                  subtitle: Text(
+                                    email.isEmpty ? volunteerId : email,
+                                  ),
+                                  trailing: IconButton(
+                                    tooltip: 'Remove volunteer',
+                                    icon: const Icon(Icons.close),
+                                    onPressed: () {
+                                      setDialogState(() {
+                                        selectedVolunteerIds.remove(
+                                          volunteerId,
+                                        );
+                                      });
+                                    },
+                                  ),
+                                );
+                              },
+                            );
+                          }),
+                        ],
+                        const SizedBox(height: 14),
 
                         // Task Description
                         TextFormField(
@@ -221,11 +262,11 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                             : () async {
                                 if (!formKey.currentState!.validate()) return;
 
-                                if (selectedVolunteerId == null) {
+                                if (selectedVolunteerIds.isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
                                       content: Text(
-                                        'Please select a volunteer',
+                                        'Please select at least one volunteer',
                                       ),
                                     ),
                                   );
@@ -240,7 +281,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                                   await _assignmentsService.createAssignment(
                                     siteId: selectedSite?.id ?? '',
                                     siteName: selectedSite?.name,
-                                    volunteerId: selectedVolunteerId!,
+                                    volunteerIds: selectedVolunteerIds.toList(),
                                     taskDescription: taskController.text.trim(),
                                     assignedAt: selectedDate,
                                   );

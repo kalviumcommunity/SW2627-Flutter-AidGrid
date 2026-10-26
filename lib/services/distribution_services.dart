@@ -70,7 +70,16 @@ class DistributionService {
         final assignmentData = assignmentSnapshot.data()!;
         assignmentDescription = assignmentData['taskDescription'] as String?;
 
-        if (assignmentData['volunteerId'] != volunteerId) {
+        final rawVolunteerIds = assignmentData['volunteerIds'];
+
+        final assignedVolunteerIds = rawVolunteerIds is List
+            ? rawVolunteerIds.whereType<String>().toList()
+            : [
+                if (assignmentData['volunteerId'] is String)
+                  assignmentData['volunteerId'] as String,
+              ];
+
+        if (!assignedVolunteerIds.contains(volunteerId)) {
           throw StateError(
             'The selected assignment does not belong to this volunteer.',
           );
