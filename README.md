@@ -198,3 +198,10 @@ Potential improvements include:
 ## License
 
 No license has been specified yet. Add a license before distributing or reusing this project publicly.
+
+## UI/UX Mockup
+
+The following mockup illustrates the planned user experience for
+administrators and volunteers in AidGrid.
+
+![AidGrid UI/UX Mockup](docs/images/aidgrid-ui-mockup.png)
