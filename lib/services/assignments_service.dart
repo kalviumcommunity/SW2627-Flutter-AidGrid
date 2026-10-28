@@ -177,8 +177,17 @@ class AssignmentsService {
             }, onError: handleStreamError);
 
         localSub = _localStreamController.stream.listen((all) {
-          if (!controller.isClosed) {
-            controller.add(_filterByVolunteer(all, volunteerId));
+          if (controller.isClosed) return;
+
+          // Keep the local fallback scoped to this volunteer.
+          final localAssignments = _filterByVolunteer(all, volunteerId)
+            ..sort((a, b) => b.assignedAt.compareTo(a.assignedAt));
+
+          // Before Firestore responds, local data can be shown immediately.
+          // Once remote snapshots have arrived, don't replace them with stale
+          // local-cache emissions.
+          if (legacyAssignments.isEmpty && multiAssignments.isEmpty) {
+            controller.add(localAssignments);
           }
         });
       },
@@ -356,12 +365,17 @@ class AssignmentsService {
   Future<void> deleteAssignment(String assignmentId) async {
     try {
       await _assignmentsCollection.doc(assignmentId).delete();
+
+      // Update local state only after Firestore confirms deletion.
+      _localAssignments.removeWhere((a) => a.id == assignmentId);
+      _localStreamController.add(List<Assignment>.from(_localAssignments));
+
+      isUsingFallback = false;
+      lastFirestoreError = null;
     } catch (e) {
       isUsingFallback = true;
       lastFirestoreError = e.toString();
+      rethrow;
     }
-
-    _localAssignments.removeWhere((a) => a.id == assignmentId);
-    _localStreamController.add(List<Assignment>.from(_localAssignments));
   }
 }
