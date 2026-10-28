@@ -78,6 +78,32 @@ class _RecordDistributionPageState extends State<RecordDistributionPage> {
     }
   }
 
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+  _loadVolunteerAssignments(String volunteerId) async {
+    final collection = FirebaseFirestore.instance.collection('Assignments');
+
+    final results = await Future.wait([
+      collection
+          .where('volunteerIds', arrayContains: volunteerId)
+          .where('status', whereIn: ['Pending', 'In Progress'])
+          .get(),
+      collection
+          .where('volunteerId', isEqualTo: volunteerId)
+          .where('status', whereIn: ['Pending', 'In Progress'])
+          .get(),
+    ]);
+
+    final assignments = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+
+    for (final snapshot in results) {
+      for (final doc in snapshot.docs) {
+        assignments[doc.id] = doc;
+      }
+    }
+
+    return assignments.values.toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -241,20 +267,12 @@ class _RecordDistributionPageState extends State<RecordDistributionPage> {
 
                 const SizedBox(height: 16),
 
-                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: _selectedVolunteerId == null
+                FutureBuilder<
+                  List<QueryDocumentSnapshot<Map<String, dynamic>>>
+                >(
+                  future: _selectedVolunteerId == null
                       ? null
-                      : FirebaseFirestore.instance
-                            .collection('Assignments')
-                            .where(
-                              'volunteerIds',
-                              arrayContains: _selectedVolunteerId,
-                            )
-                            .where(
-                              'status',
-                              whereIn: ['Pending', 'In Progress'],
-                            )
-                            .snapshots(),
+                      : _loadVolunteerAssignments(_selectedVolunteerId!),
                   builder: (context, assignmentSnapshot) {
                     if (_selectedVolunteerId == null) {
                       return const Text(
@@ -273,7 +291,7 @@ class _RecordDistributionPageState extends State<RecordDistributionPage> {
                       return const Center(child: CircularProgressIndicator());
                     }
 
-                    final assignments = assignmentSnapshot.data?.docs ?? [];
+                    final assignments = assignmentSnapshot.data ?? [];
 
                     return DropdownButtonFormField<String>(
                       initialValue: _selectedAssignmentId,
