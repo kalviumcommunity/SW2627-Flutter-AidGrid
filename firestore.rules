@@ -1,0 +1,97 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role == 'ADMIN';
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isUser(userId) || isAdmin();
+
+      allow create: if isUser(userId)
+                    && request.resource.data.role == 'VOLUNTEER';
+
+      allow update: if isUser(userId)
+                    && request.resource.data.role == resource.data.role;
+
+      allow delete: if false;
+    }
+
+    // Inventory Collection
+    match /Inventory/{itemId} {
+      allow read: if isAuthenticated();
+
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Sites Collection
+    match /Sites/{siteId} {
+      allow read: if isAuthenticated();
+
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Assignments Collection
+    // Supports both legacy 'volunteerId' string and modern 'volunteerIds' list.
+    match /Assignments/{assignmentId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        (resource.data.volunteerId == request.auth.uid) ||
+        (resource.data.volunteerIds is list && request.auth.uid in resource.data.volunteerIds)
+      );
+
+      allow create: if isAdmin();
+
+      allow update: if isAuthenticated() && (
+        isAdmin() || (
+          (
+            (resource.data.volunteerId == request.auth.uid) ||
+            (resource.data.volunteerIds is list && request.auth.uid in resource.data.volunteerIds)
+          ) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+          request.resource.data.status in ['Pending', 'In Progress', 'Completed']
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // Distributions Collection
+    // Requires atomic deduction of Inventory in the same transaction
+    match /Distributions/{distributionId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.volunteerId == request.auth.uid
+      );
+
+      allow create: if isAdmin()
+        && request.resource.data.quantity is int
+        && request.resource.data.quantity > 0
+        && exists(/databases/$(database)/documents/Inventory/$(request.resource.data.itemId))
+        && getAfter(
+            /databases/$(database)/documents/Inventory/$(request.resource.data.itemId)
+          ).data.quantity == get(
+            /databases/$(database)/documents/Inventory/$(request.resource.data.itemId)
+          ).data.quantity - request.resource.data.quantity;
+
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}

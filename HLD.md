@@ -8,39 +8,37 @@ The system uses Firebase Authentication for user identity and Cloud Firestore fo
 
 ## 2. Architecture Overview
 
-```text
-                 AidGrid Application
-                         |
-                 Flutter UI Layer
-                         |
-          +--------------+--------------+
-          |              |              |
-      Inventory      Assignments    Distribution
-        Screens        Screens        Screens
-          |              |              |
-          +--------------+--------------+
-                         |
-                    Service Layer
-                         |
-          +--------------+--------------+
-          |              |              |
-     Inventory       Assignment    Distribution
-      Services        Services       Service
-          |              |              |
-          +--------------+--------------+
-                         |
-                 Firebase SDKs
-                         |
-          +--------------+--------------+
-          |                             |
- Firebase Authentication          Cloud Firestore
-          |                             |
-     User identity          Persistent application data
-                                      |
-                           Firestore Security Rules
+```mermaid
+flowchart TD
+    subgraph UI_Layer["Flutter Presentation Layer"]
+        InventoryUI["Inventory Management Screen"]
+        SitesUI["Sites & Communities Screen"]
+        AssignmentsUI["Volunteer Assignments Screen"]
+        DistUI["Record Distribution & History Screens"]
+    end
+
+    subgraph Service_Layer["Dart Business Logic & Service Layer"]
+        SitesService["SitesService"]
+        AssignmentsService["AssignmentsService (Fallback & Multi-Sub)"]
+        DistService["DistributionService (Atomic Transaction)"]
+        DistHistoryService["DistributionHistoryService"]
+    end
+
+    subgraph Firebase_Layer["Firebase Platform Services"]
+        FirebaseAuth["Firebase Authentication (Role-Based Tokens)"]
+        Firestore["Cloud Firestore Database"]
+        SecurityRules["Firestore Security Rules (Enforcing Least Privilege)"]
+        CloudFunctions["Cloud Functions (Backend Verification)"]
+    end
+
+    UI_Layer --> Service_Layer
+    Service_Layer --> FirebaseAuth
+    Service_Layer --> Firestore
+    Firestore -.-> SecurityRules
+    CloudFunctions -.-> Firestore
 ```
 
-This diagram represents the logical architecture. Exact class boundaries may differ slightly from the current source code.
+This diagram represents the logical architecture. Exact class boundaries match the production codebase across `lib/screens/`, `lib/services/`, and `lib/models/`.
 
 ## 3. Technology Stack
 
@@ -158,79 +156,86 @@ These are document references represented by IDs; they do not imply relational d
 
 ## 6. Key Data Flows
 
-### 6.1 Assignment Creation
+### 6.1 Assignment Creation Workflow
 
-```text
-Administrator
-     |
-     v
-Assignment Form
-     |
-     v
-Validate input and volunteer selection
-     |
-     v
-Assignment Service
-     |
-     v
-Firestore authorization
-     |
-     v
-Create Assignment document
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Administrator
+    participant UI as AssignmentsPage
+    participant Service as AssignmentsService
+    participant Rules as Firestore Security Rules
+    participant DB as Cloud Firestore (Assignments)
+
+    Admin->>UI: Selects Site, Searches & Selects Volunteers, Enters Task
+    UI->>Service: createAssignment(siteId, volunteerIds, taskDescription, siteName)
+    Service->>DB: addDoc({siteId, volunteerIds, taskDescription, assignedAt, status: 'Pending', siteName})
+    DB->>Rules: Check request.auth.uid role == 'ADMIN'
+    Rules-->>DB: Authorized
+    DB-->>Service: Return DocumentReference (id)
+    Service-->>UI: Return assignment ID
+    UI-->>Admin: Show confirmation & update UI stream
 ```
 
-### 6.2 Volunteer Assignment Retrieval
+### 6.2 Volunteer Assignment Retrieval Workflow
 
-```text
-Volunteer signs in
-       |
-       v
-Obtain authenticated UID
-       |
-       v
-Query assignments for volunteer
-       |
-       v
-Parse Firestore documents
-       |
-       v
-Emit assignment stream
-       |
-       v
-Update assignment UI
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Vol as Volunteer
+    participant App as Flutter Client
+    participant Service as AssignmentsService
+    participant DB as Cloud Firestore (Assignments)
+
+    Vol->>App: Logs in (receives UID)
+    App->>Service: getVolunteerAssignmentsStream(volunteerId)
+    par Query Legacy Assignments
+        Service->>DB: where('volunteerId', '==', volunteerId).snapshots()
+    and Query Multi-Volunteer Assignments
+        Service->>DB: where('volunteerIds', 'array-contains', volunteerId).snapshots()
+    end
+    DB-->>Service: Emit document snapshots
+    Note over Service: Merge by doc ID, deduplicate, filter & sort by assignedAt desc
+    Service-->>App: Emit sorted List<Assignment>
+    App-->>Vol: Render volunteer task cards with action buttons
 ```
 
 The retrieval implementation supports both the legacy single-volunteer query and the new array-membership query. Firestore security rules must also permit every document the query could return.
 
-### 6.3 Distribution Recording
+### 6.3 Distribution Recording & Transaction Workflow
 
-```text
-Administrator submits distribution
-                |
-                v
-         Validate input
-                |
-                v
-       Start Firestore transaction
-                |
-                v
- Read inventory, site, volunteer,
- and optional assignment documents
-                |
-                v
-       Validate all conditions
-                |
-                v
-  Decrease inventory + create record
-                |
-                v
-       Commit transaction
-                |
-                v
-       Report success or failure
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Administrator
+    participant UI as RecordDistributionPage
+    participant Service as DistributionService
+    participant DB as Cloud Firestore (Transaction)
+    participant Rules as Firestore Security Rules
+
+    Admin->>UI: Selects Site, Volunteer, Item, Quantity, [Assignment]
+    UI->>Service: recordDistribution(itemId, siteId, quantity, volunteerId, assignmentId)
+    Service->>DB: Begin runTransaction()
+    Note over Service,DB: Phase 1: All Reads First
+    Service->>DB: get(Inventory/itemId)
+    Service->>DB: get(Sites/siteId)
+    Service->>DB: get(users/volunteerId)
+    opt assignmentId != null
+        Service->>DB: get(Assignments/assignmentId)
+    end
+    Note over Service: Phase 2: In-Memory Validation & Invariant Checks
+    Note over Service: 1. Item, site, volunteer exist & site isActive<br/>2. User role == 'VOLUNTEER'<br/>3. Available stock >= requested quantity<br/>4. Assignment belongs to volunteer, site & status != Completed
+    Note over Service,DB: Phase 3: Transactional Writes
+    Service->>DB: update(Inventory/itemId, {quantity: availableStock - quantity})
+    Service->>DB: set(Distributions/newDocId, recordData)
+    DB->>Rules: Validate ADMIN, quantity > 0, getAfter(Inventory).quantity == get(Inventory).quantity - quantity
+    Rules-->>DB: Validated
+    DB-->>Service: Transaction Committed Atomically
+    Service-->>UI: Return distribution document ID
+    UI-->>Admin: Show "Distribution recorded successfully" SnackBar
 ```
 
-If the transaction fails, Firestore does not commit only one of the two writes.
+If the transaction fails (e.g. stock depletion or connection abort), Firestore rolls back all writes automatically; neither the inventory deduction nor the distribution record is committed alone.
 
 ## 7. Authorization Architecture
 

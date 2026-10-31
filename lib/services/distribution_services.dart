@@ -4,10 +4,26 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/distribution_record.dart';
 
 class DistributionService {
-  final FirebaseFirestore _firestore;
+  final FirebaseFirestore? firestore;
+  final FirebaseAuth? auth;
+  final User? Function()? currentUserResolver;
 
-  DistributionService({FirebaseFirestore? firestore})
-    : _firestore = firestore ?? FirebaseFirestore.instance;
+  DistributionService({
+    this.firestore,
+    this.auth,
+    this.currentUserResolver,
+  });
+
+  FirebaseFirestore get _effectiveFirestore =>
+      firestore ?? FirebaseFirestore.instance;
+  FirebaseAuth get _effectiveAuth => auth ?? FirebaseAuth.instance;
+
+  User? get _currentUser {
+    if (currentUserResolver != null) {
+      return currentUserResolver!();
+    }
+    return _effectiveAuth.currentUser;
+  }
 
   /// Deducts inventory and records a distribution atomically.
   Future<String> recordDistribution({
@@ -17,24 +33,25 @@ class DistributionService {
     String? assignmentId,
     required String volunteerId,
   }) async {
-    final user = FirebaseAuth.instance.currentUser;
-
-    if (user == null) {
-      throw StateError('You must be logged in to record a distribution.');
-    }
     if (quantity <= 0) {
       throw ArgumentError('Quantity must be greater than zero.');
     }
 
-    final itemRef = _firestore.collection('Inventory').doc(itemId);
-    final siteRef = _firestore.collection('Sites').doc(siteId);
-    final distributionRef = _firestore.collection('Distributions').doc();
-    final volunteerRef = _firestore.collection('users').doc(volunteerId);
+    final user = _currentUser;
+
+    if (user == null) {
+      throw StateError('You must be logged in to record a distribution.');
+    }
+
+    final itemRef = _effectiveFirestore.collection('Inventory').doc(itemId);
+    final siteRef = _effectiveFirestore.collection('Sites').doc(siteId);
+    final distributionRef = _effectiveFirestore.collection('Distributions').doc();
+    final volunteerRef = _effectiveFirestore.collection('users').doc(volunteerId);
     final assignmentRef = assignmentId == null
         ? null
-        : _firestore.collection('Assignments').doc(assignmentId);
+        : _effectiveFirestore.collection('Assignments').doc(assignmentId);
 
-    await _firestore.runTransaction((transaction) async {
+    await _effectiveFirestore.runTransaction((transaction) async {
       // Read both documents before making any writes.
       String? assignmentDescription;
       final itemSnapshot = await transaction.get(itemRef);
@@ -50,6 +67,11 @@ class DistributionService {
 
       if (!siteSnapshot.exists) {
         throw StateError('The selected site no longer exists.');
+      }
+
+      final siteData = siteSnapshot.data()!;
+      if (siteData['isActive'] == false) {
+        throw StateError('The selected site is inactive.');
       }
 
       if (!volunteerSnapshot.exists) {
@@ -101,7 +123,6 @@ class DistributionService {
       }
 
       final itemData = itemSnapshot.data()!;
-      final siteData = siteSnapshot.data()!;
 
       final rawStock = itemData['quantity'];
       if (rawStock is! num) {
