@@ -226,28 +226,32 @@ The distribution service is responsible for recording a distribution and updatin
 ### Method contract
 
 The service accepts:
-- `itemId`
-- `siteId`
-- `quantity`
-- Optional `assignmentId`
-- `volunteerId`
+- `itemId`: String (Inventory document ID)
+- `siteId`: String (Sites document ID)
+- `quantity`: int (Whole-number quantity to distribute)
+- Optional `assignmentId`: String? (Linked task ID)
+- `volunteerId`: String (UID of assigned distributing volunteer)
 
-The current implementation also checks for an authenticated Firebase user before executing the operation.
+Constructor dependencies support inversion of control for testability:
+- `firestore`: Optional custom `FirebaseFirestore` instance
+- `auth`: Optional custom `FirebaseAuth` instance
+- `currentUserResolver`: Optional callback returning authenticated `User?` for unit tests
 
 ### Validation
 
 Before committing changes, the service validates:
-1. A user is authenticated.
-2. The requested quantity is greater than zero.
-3. The inventory document exists.
-4. The site document exists.
-5. The volunteer document exists.
-6. The volunteer has the expected role.
-7. If an assignment is provided, the assignment exists.
-8. The selected volunteer is assigned to the assignment, supporting both legacy and new formats.
-9. The assignment site matches the selected site.
-10. The assignment status is `Pending` or `In Progress`.
-11. Sufficient inventory is available.
+1. The requested quantity is greater than zero (`quantity > 0`).
+2. A user is authenticated (`_currentUser != null`).
+3. The inventory document exists in Firestore.
+4. The site document exists in Firestore.
+5. The site is currently active (`siteData['isActive'] == true`).
+6. The volunteer document exists in Firestore.
+7. The volunteer has the expected role (`volunteerData['role'] == 'VOLUNTEER'`).
+8. If an assignment is provided, the assignment document exists.
+9. The selected volunteer is assigned to the assignment, supporting both legacy (`volunteerId`) and new (`volunteerIds`) formats.
+10. The assignment site matches the selected distribution site (`assignmentData['siteId'] == siteId`).
+11. The assignment status is eligible for distribution (`Pending` or `In Progress`).
+12. Sufficient inventory is available (`availableStock >= quantity`).
 
 ### Transaction workflow
 
@@ -308,20 +312,21 @@ Administrator provisioning must be handled through a trusted process rather than
 ### 7.4 Assignments
 
 The rules support:
-- The legacy `volunteerId` field.
-- The newer `volunteerIds` list.
-- Administrator management.
-- Volunteer reads when the requesting UID is assigned.
-- Volunteer updates limited to the `status` field.
-- A fixed list of permitted status values.
+- The legacy `volunteerId` field (`resource.data.volunteerId == request.auth.uid`).
+- The multi-volunteer `volunteerIds` list (`resource.data.volunteerIds is list && request.auth.uid in resource.data.volunteerIds`).
+- Administrator full management (create, update, delete).
+- Volunteer reads when the requesting UID is assigned in either legacy or array format.
+- Volunteer updates strictly limited to the `status` field via `request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])`.
+- A fixed list of permitted status values (`Pending`, `In Progress`, `Completed`).
 
-Because Firestore rules are not filters, volunteer queries must be structured so the query's potential results satisfy the applicable read rules.
+Because Firestore rules are not filters, volunteer queries must be structured with explicit equality or array-membership clauses so the query's potential results satisfy the applicable read rules.
 
 ### 7.5 Distributions
 
 - Distribution creation is restricted to administrators.
-- Updates and deletions are disabled.
-- Reads are restricted according to administrator access or the recorded volunteer field.
+- Updates and deletions are disabled (`false`).
+- Reads are restricted to administrators or the recorded distributing volunteer (`resource.data.volunteerId == request.auth.uid`).
+- Server-enforced transactional invariant: Distribution document creation is validated using `getAfter()`, which requires that the referenced item's stock in `Inventory` is decremented by exactly `request.resource.data.quantity` in the same transaction.
 
 The distribution service and the security rules must remain consistent as the application evolves.
 
