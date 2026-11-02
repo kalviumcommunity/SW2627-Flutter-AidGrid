@@ -3,6 +3,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'models/assignment.dart';
+import 'services/assignments_service.dart';
 import 'screens/distribution/record_distribution_page.dart';
 
 import 'firebase_options.dart';
@@ -611,7 +613,8 @@ class AdminDashboardPage extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const InventoryPage(),
+                              builder: (context) =>
+                                  const InventoryPage(isAdmin: true),
                             ),
                           );
                         },
@@ -789,7 +792,14 @@ class AdminDashboardPage extends StatelessWidget {
 }
 
 class InventoryPage extends StatelessWidget {
-  const InventoryPage({super.key});
+  final bool isAdmin;
+  final Stream<QuerySnapshot<Map<String, dynamic>>>? inventoryStream;
+
+  const InventoryPage({
+    super.key,
+    this.isAdmin = false,
+    this.inventoryStream,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -797,22 +807,24 @@ class InventoryPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text("Inventory"),
         actions: [
-          IconButton(
-            tooltip: 'Add Inventory',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const AddInventoryPage(),
-                ),
-              );
-            },
-            icon: const Icon(Icons.add),
-          ),
+          if (isAdmin)
+            IconButton(
+              tooltip: 'Add Inventory',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AddInventoryPage(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.add),
+            ),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('Inventory').snapshots(),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: inventoryStream ??
+            FirebaseFirestore.instance.collection('Inventory').snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
@@ -834,7 +846,7 @@ class InventoryPage extends StatelessWidget {
             padding: const EdgeInsets.all(20),
             itemCount: items.length,
             itemBuilder: (context, index) {
-              final item = items[index].data() as Map<String, dynamic>;
+              final item = items[index].data();
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
@@ -881,29 +893,30 @@ class InventoryPage extends StatelessWidget {
                             item['category'] ?? '',
                             style: AppTypography.labelSmall,
                           ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            tooltip: 'Edit inventory',
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => EditInventoryPage(
-                                    documentId: items[index].id,
-                                    name: item['name'] ?? '',
-                                    category: item['category'] ?? '',
-                                    quantity:
-                                        item['quantity']?.toString() ?? '',
-                                    unit: item['unit'] ?? '',
+                          if (isAdmin) ...[
+                            const SizedBox(width: 8),
+                            IconButton(
+                              tooltip: 'Edit inventory',
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => EditInventoryPage(
+                                      documentId: items[index].id,
+                                      name: item['name'] ?? '',
+                                      category: item['category'] ?? '',
+                                      quantity:
+                                          item['quantity']?.toString() ?? '',
+                                      unit: item['unit'] ?? '',
+                                    ),
                                   ),
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.edit_outlined),
-                          ),
-                          IconButton(
-                            tooltip: 'Delete inventory',
-                            onPressed: () async {
+                                );
+                              },
+                              icon: const Icon(Icons.edit_outlined),
+                            ),
+                            IconButton(
+                              tooltip: 'Delete inventory',
+                              onPressed: () async {
                               final shouldDelete = await showDialog<bool>(
                                 context: context,
                                 builder: (dialogContext) {
@@ -961,6 +974,7 @@ class InventoryPage extends StatelessWidget {
                             icon: const Icon(Icons.delete_outline),
                           ),
                         ],
+                      ],
                       ),
                     ],
                   ),
@@ -1447,13 +1461,9 @@ class DashboardPage extends StatelessWidget {
                                 caption: 'No signed-in volunteer',
                                 icon: Icons.local_shipping_outlined,
                               )
-                            : StreamBuilder<
-                                QuerySnapshot<Map<String, dynamic>>
-                              >(
-                                stream: FirebaseFirestore.instance
-                                    .collection('Assignments')
-                                    .where('volunteerId', isEqualTo: userId)
-                                    .snapshots(),
+                            : StreamBuilder<List<Assignment>>(
+                                stream: AssignmentsService()
+                                    .getVolunteerAssignmentsStream(userId),
                                 builder: (context, assignmentSnapshot) {
                                   if (assignmentSnapshot.connectionState ==
                                       ConnectionState.waiting) {
@@ -1475,17 +1485,16 @@ class DashboardPage extends StatelessWidget {
                                   }
 
                                   final assignments =
-                                      assignmentSnapshot.data?.docs ?? [];
+                                      assignmentSnapshot.data ?? [];
 
                                   var pending = 0;
                                   var inProgress = 0;
 
-                                  for (final doc in assignments) {
-                                    final status = doc.data()['status'];
-
-                                    if (status == 'Pending') {
+                                  for (final a in assignments) {
+                                    if (a.status == AssignmentStatus.pending) {
                                       pending++;
-                                    } else if (status == 'In Progress') {
+                                    } else if (a.status ==
+                                        AssignmentStatus.inProgress) {
                                       inProgress++;
                                     }
                                   }
@@ -1533,7 +1542,8 @@ class DashboardPage extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const InventoryPage(),
+                          builder: (context) =>
+                              const InventoryPage(isAdmin: false),
                         ),
                       );
                     },

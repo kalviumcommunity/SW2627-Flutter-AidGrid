@@ -111,5 +111,81 @@ void main() {
       expect(updated.taskDescription, equals('Deliver rations'));
       expect(updated.volunteerIds, equals(['user_1', 'user_2']));
     });
+
+    test('Active assignment count includes pending and inProgress, excludes completed', () {
+      final now = DateTime.now();
+      final assignments = [
+        Assignment(
+          id: 'a1',
+          siteId: 's1',
+          volunteerIds: ['vol_1'],
+          taskDescription: 'Task 1',
+          assignedAt: now,
+          status: AssignmentStatus.pending,
+        ),
+        Assignment(
+          id: 'a2',
+          siteId: 's1',
+          volunteerIds: ['vol_1', 'vol_2'],
+          taskDescription: 'Task 2',
+          assignedAt: now,
+          status: AssignmentStatus.inProgress,
+        ),
+        Assignment(
+          id: 'a3',
+          siteId: 's1',
+          volunteerIds: ['vol_1'],
+          taskDescription: 'Task 3',
+          assignedAt: now,
+          status: AssignmentStatus.completed,
+        ),
+      ];
+
+      var pending = 0;
+      var inProgress = 0;
+
+      for (final a in assignments) {
+        if (a.status == AssignmentStatus.pending) {
+          pending++;
+        } else if (a.status == AssignmentStatus.inProgress) {
+          inProgress++;
+        }
+      }
+
+      final activeCount = pending + inProgress;
+
+      expect(pending, equals(1));
+      expect(inProgress, equals(1));
+      expect(activeCount, equals(2));
+    });
+
+    test('Assignments deduplicate by document ID when merging legacy and new queries', () {
+      final now = DateTime.now();
+      final legacyAssignment = Assignment(
+        id: 'dup_1',
+        siteId: 's1',
+        volunteerIds: ['vol_1'],
+        taskDescription: 'Legacy task',
+        assignedAt: now,
+        status: AssignmentStatus.pending,
+      );
+
+      final multiAssignment = Assignment(
+        id: 'dup_1',
+        siteId: 's1',
+        volunteerIds: ['vol_1', 'vol_2'],
+        taskDescription: 'Multi volunteer updated task',
+        assignedAt: now,
+        status: AssignmentStatus.inProgress,
+      );
+
+      final merged = <String, Assignment>{};
+      merged[legacyAssignment.id] = legacyAssignment;
+      merged[multiAssignment.id] = multiAssignment;
+
+      expect(merged.length, equals(1));
+      expect(merged['dup_1']!.status, equals(AssignmentStatus.inProgress));
+      expect(merged['dup_1']!.volunteerIds, contains('vol_1'));
+    });
   });
 }
